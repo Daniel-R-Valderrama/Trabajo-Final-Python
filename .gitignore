@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+
+# Material del curso (rúbrica, enunciado, propuesta y capturas): no se publica.
+Enunciados/

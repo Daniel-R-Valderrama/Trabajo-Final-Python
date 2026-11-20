@@ -1,0 +1,8 @@
+requests==2.34.2
+beautifulsoup4==4.15.0
+pandas==3.1.1
+pdfplumber==0.11.10
+matplotlib==3.11.2
+streamlit==1.67.0
+# No se importa en el código: es el entorno de Jupyter para abrir y ejecutar tutorial.ipynb.
+notebook==7.6.5
