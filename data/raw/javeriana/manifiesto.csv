@@ -1,0 +1,4 @@
+tipo_pagina,url,archivo,codigo_http,fecha_extraccion
+becas,https://www.javeriana.edu.co/apoyo-financiero/beca-aspirantes/pregado,0000_becas.html.gz,200,2026-11-27
+becas,https://www.javeriana.edu.co/apoyo-financiero/beca-aspirante/posgrado,0001_becas.html.gz,200,2026-11-27
+becas,https://www.javeriana.edu.co/apoyo-financiero/beca-estudiante/pregrado,0002_becas.html.gz,200,2026-11-27

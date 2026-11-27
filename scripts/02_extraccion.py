@@ -1,6 +1,6 @@
 """Fase 2: extracción y caché.
 
-Si ACTUALIZAR_DATOS = True, vuelve a raspar las dos fuentes y sobrescribe data/raw/.
+Si ACTUALIZAR_DATOS = True, vuelve a raspar las tres fuentes y sobrescribe data/raw/.
 Si es False, todo se lee de data/raw/ (sin internet).
 
 Entrada: data/raw/<fuente>/ (o las páginas en línea si ACTUALIZAR_DATOS = True).
@@ -23,9 +23,11 @@ ACTUALIZAR_DATOS = False
 if ACTUALIZAR_DATOS:
     scrapers.descargar_uniandes()
     scrapers.descargar_atenea()
+    scrapers.descargar_javeriana()
 
 # %% Lectura de los insumos crudos al esquema común
-becas_apoyos = pd.concat([scrapers.leer_uniandes(), scrapers.leer_atenea()], ignore_index=True)
+becas_apoyos = pd.concat([scrapers.leer_uniandes(), scrapers.leer_atenea(), scrapers.leer_javeriana()],
+                         ignore_index=True)
 
 # %% Resumen: registros por fuente, origen de la clasificación y campos vacíos
 print("\nRegistros por entidad y origen de nivel, instrumento y área:")

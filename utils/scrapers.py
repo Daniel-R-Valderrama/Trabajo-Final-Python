@@ -1,12 +1,14 @@
 """Funciones auxiliares reutilizables del proyecto.
 
-Hay dos tipos de funciones por fuente (Universidad de los Andes y Agencia Atenea):
+Hay dos tipos de funciones por fuente (Universidad de los Andes, Agencia Atenea y Pontificia
+Universidad Javeriana):
 - descargar_<fuente>(): recorre el sitio (respetando robots.txt y con pausas) y guarda los
   insumos crudos en data/raw/<fuente>/ junto con un manifiesto (qué URL, qué archivo, qué fecha).
   Solo se usa cuando ACTUALIZAR_DATOS = True.
 - leer_<fuente>(): lee esos archivos crudos (sin internet) y devuelve un DataFrame con el esquema común.
 
-Uniandes publica el nivel de formación, el instrumento y los programas en su catálogo; en Atenea
+Uniandes publica el nivel de formación, el instrumento y los programas en su catálogo; la Javeriana
+publica cada beca en una página por nivel y tipo de estudiante; en Atenea
 esas columnas se deducen del texto con reglas explícitas (NIVELES_ATENEA, INSTRUMENTOS_ATENEA,
 AREAS_ATENEA). Al final están las funciones de limpieza (texto y fechas), de estado de las
 convocatorias y de validación de enlaces.
@@ -47,6 +49,15 @@ UNIANDES_API_HEADERS = {
     "x-connection-code": "19"
 }
 ATENEA_BASE = "https://www.agenciaatenea.gov.co"
+JAVERIANA_BASE = "https://www.javeriana.edu.co"
+# Páginas de becas de la Javeriana (cada beca es un acordeón): nivel y tipo de estudiante de cada página.
+# Las páginas de descuentos y de becas de posgrado para estudiantes (intranet) no usan acordeones y no se
+# incluyen.
+PAGINAS_JAVERIANA = {
+    f"{JAVERIANA_BASE}/apoyo-financiero/beca-aspirantes/pregado": ("Pregrado universitario", "Estudiante Nuevo"),
+    f"{JAVERIANA_BASE}/apoyo-financiero/beca-aspirante/posgrado": ("Posgrado", "Estudiante Nuevo"),
+    f"{JAVERIANA_BASE}/apoyo-financiero/beca-estudiante/pregrado": ("Pregrado universitario", "Estudiante Antiguo"),
+}
 
 # Separador de las columnas que pueden tener varios valores (un apoyo puede servir a varios niveles).
 SEPARADOR = "; "
@@ -61,8 +72,63 @@ ESQUEMA = ["nombre", "entidad", "nivel_formacion", "instrumento", "area", "progr
 # - estado_publicado: estado que la propia entidad muestra (solo Atenea lo publica).
 # - porcentaje_min, porcentaje_max, forma_porcentaje: % de la matrícula que cubre, según el texto publicado
 #   (extraer_porcentaje_matricula).
+# - tipo_estudiante: "Estudiante Nuevo", "Estudiante Antiguo" o "Estudiante Nuevo y Antiguo" (Uniandes lo
+#   publica; en la Javeriana sale de la página: aspirantes o estudiantes; Atenea no lo publica).
+# - descripcion: texto completo que describe el apoyo (Uniandes: sección "Descripción" o "Cobertura" de la
+#   ficha; Javeriana: texto del acordeón; Atenea: la cobertura).
+# - area_conocimiento: área de conocimiento del SNIES a la que se dirige el apoyo (inferido; ver
+#   AREA_FACULTAD_UNIANDES, AREA_SECTOR_ATENEA y AREAS_NOMBRE_JAVERIANA).
 COLUMNAS_EXTRA = ["porcentaje_min", "porcentaje_max", "forma_porcentaje", "n_programas", "instrumento_publicado",
-                  "origen_clasificacion", "requisitos_origen", "estado_publicado"]
+                  "origen_clasificacion", "requisitos_origen", "estado_publicado", "tipo_estudiante", "descripcion",
+                  "area_conocimiento"]
+
+# Áreas de conocimiento del SNIES (Ministerio de Educación), comunes a las tres fuentes.
+AREAS_SNIES = ["Agronomía, veterinaria y afines", "Bellas artes", "Ciencias de la educación",
+               "Ciencias de la salud", "Ciencias sociales y humanas",
+               "Economía, administración, contaduría y afines", "Ingeniería, arquitectura, urbanismo y afines",
+               "Matemáticas y ciencias naturales"]
+# Apoyos que no restringen el área: financian cualquier programa (de la universidad o, en Atenea, de sus
+# instituciones aliadas). Es una deducción a partir de que no declaran área (inferido).
+CUALQUIER_AREA = "Cualquier área"
+# Facultades de Uniandes → áreas del SNIES (inferido: la correspondencia se hace por facultad, no por programa).
+# La Decanatura de Estudiantes no es una facultad académica y no se asigna.
+AREA_FACULTAD_UNIANDES = {
+    "Administración": ["Economía, administración, contaduría y afines"],
+    "Arquitectura y Diseño": ["Ingeniería, arquitectura, urbanismo y afines", "Bellas artes"],
+    "Artes y Humanidades": ["Bellas artes", "Ciencias sociales y humanas"],
+    "Ciencias": ["Matemáticas y ciencias naturales"],
+    "Ciencias Sociales": ["Ciencias sociales y humanas"],
+    "Derecho": ["Ciencias sociales y humanas"],
+    "Economía": ["Economía, administración, contaduría y afines"],
+    "Educación": ["Ciencias de la educación"],
+    "Esc de Gobierno Alberto Lleras": ["Ciencias sociales y humanas"],
+    "Ingeniería": ["Ingeniería, arquitectura, urbanismo y afines"],
+    "Medicina": ["Ciencias de la salud"],
+}
+# Sectores que declaran los cursos de Atenea (AREAS_ATENEA) → áreas del SNIES (inferido). Los cursos de
+# servicios (turismo, belleza, gastronomía) no tienen un área del SNIES equivalente y conservan su nombre.
+AREA_SECTOR_ATENEA = {
+    "Tecnologías digitales": ["Ingeniería, arquitectura, urbanismo y afines"],
+    "Idiomas": ["Ciencias sociales y humanas"],
+    "Ciencia y tecnología (STEM)": ["Matemáticas y ciencias naturales", "Ingeniería, arquitectura, urbanismo y afines"],
+    "Construcción": ["Ingeniería, arquitectura, urbanismo y afines"],
+    "Servicios (turismo, belleza, salud y otros)": ["Servicios (turismo, belleza y otros)"],
+}
+# Becas de la Javeriana dirigidas a un área según su nombre (inferido); las demás no restringen el área.
+AREAS_NOMBRE_JAVERIANA = {
+    "Bellas artes": r"musicales",
+    "Matemáticas y ciencias naturales": r"facultad de ciencias",
+    "Ciencias de la educación": r"profes por colombia",
+}
+
+
+def areas_snies(categorias, correspondencia):
+    """Traduce categorías de una fuente (separadas por SEPARADOR) a áreas del SNIES, sin repetir.
+    Sin categorías devuelve CUALQUIER_AREA; las que no tienen equivalente se omiten."""
+    if pd.isna(categorias):
+        return CUALQUIER_AREA
+    areas = {a for c in str(categorias).split(SEPARADOR) for a in correspondencia.get(c, [])}
+    return SEPARADOR.join(sorted(areas)) if areas else float("nan")
 
 # Categorías comunes de instrumento financiero. Uniandes publica su propio tipo de apoyo y se agrupa así:
 INSTRUMENTO_UNIANDES = {
@@ -345,7 +411,7 @@ def leer_uniandes():
     for apoyo in data.get("supports", []):
         url = apoyo.get("url", "")
         fecha_ext = fecha_ficha.get(url, fila_supports.iloc[0]["fecha_extraccion"])
-        apertura, cierre = float("nan"), float("nan")
+        apertura, cierre, descripcion = float("nan"), float("nan"), float("nan")
         archivo_html = fichas_html.get(url)
 
         if archivo_html and Path(CARPETA_RAW / "uniandes" / archivo_html).exists():
@@ -355,6 +421,13 @@ def leer_uniandes():
             bloque_fechas = titulo_fechas.find_next(class_="uk-panel") if titulo_fechas else None
             texto_fechas = bloque_fechas.get_text(" ").strip() if bloque_fechas else ""
             apertura, cierre = extraer_fechas_uniandes(texto_fechas)
+            # Descripción: la sección "Descripción" de la ficha o, si no la tiene, la sección "Cobertura".
+            for prefijo in ["descripci", "cobertura"]:
+                titulo = next((t for k, t in secciones.items() if k.lower().startswith(prefijo)), None)
+                bloque = titulo.find_next(class_="uk-panel") if titulo else None
+                if bloque and limpiar_texto(bloque.get_text(" ")):
+                    descripcion = limpiar_texto(bloque.get_text(" "))
+                    break
 
         niveles = [NIVEL_UNIANDES.get(n, n) for n in apoyo.get("nivelAcadémico") or []]
         programas = sorted({nombre_programa.get(c, c) for c in apoyo.get("programas") or []})
@@ -383,6 +456,9 @@ def leer_uniandes():
             "instrumento_publicado": tipo_apoyo,
             "origen_clasificacion": "catálogo de la entidad",
             "requisitos_origen": "api",
+            "tipo_estudiante": apoyo.get("tipoDeEstudiante") or float("nan"),
+            "descripcion": descripcion,
+            "area_conocimiento": areas_snies(SEPARADOR.join(facultades) or float("nan"), AREA_FACULTAD_UNIANDES),
         })
 
     print(f"Uniandes: {len(filas)} apoyos procesados desde el segmentador y fichas web")
@@ -511,13 +587,14 @@ def leer_atenea():
         texto_reglas = re.sub(r"beca-cr[eé]dito", "crédito", f"{nombre}. {str(cobertura)[:CARACTERES_REGLAS]}",
                               flags=re.IGNORECASE)
         porcentaje_min, porcentaje_max, forma_porcentaje = extraer_porcentaje_matricula(texto_reglas)
+        area = clasificar_por_reglas(texto_reglas, AREAS_ATENEA)
 
         filas.append({
             "nombre": nombre,
             "entidad": "Agencia Atenea",
             "nivel_formacion": clasificar_por_reglas(texto_reglas, NIVELES_ATENEA),
             "instrumento": clasificar_por_reglas(texto_reglas, INSTRUMENTOS_ATENEA),
-            "area": clasificar_por_reglas(texto_reglas, AREAS_ATENEA),
+            "area": area,
             "cobertura": cobertura,
             "requisitos": requisitos,
             "fecha_apertura": fechas[0] if len(fechas) >= 1 else float("nan"),
@@ -531,9 +608,113 @@ def leer_atenea():
             "origen_clasificacion": "reglas de texto (inferido)",
             "requisitos_origen": origen,
             "estado_publicado": estado_publicado.get(detalle["url"], float("nan")),
+            "descripcion": cobertura,
+            # Sin área declarada, Atenea financia cualquier programa de sus instituciones aliadas (inferido).
+            "area_conocimiento": areas_snies(area, AREA_SECTOR_ATENEA),
         })
     print(f"Atenea: {len(filas)} convocatorias")
     return pd.DataFrame(filas).reindex(columns=ESQUEMA + COLUMNAS_EXTRA)
+
+
+# --------------------------------------------------------------------------------------
+# Pontificia Universidad Javeriana
+# --------------------------------------------------------------------------------------
+def descargar_javeriana():
+    """Baja las páginas de becas de la Javeriana (PAGINAS_JAVERIANA), respetando robots.txt y con pausas."""
+    print("Javeriana: descargando páginas de becas...")
+    descargador = Descargador("javeriana", JAVERIANA_BASE)
+    for url in PAGINAS_JAVERIANA:
+        descargador.obtener(url, "becas")
+    descargador.guardar_manifiesto()
+
+
+def acordeones_javeriana():
+    """Todos los acordeones (becas) de las páginas guardadas de la Javeriana, con su página y sección,
+    antes de excluir los de movilidad. Sirve para el reconocimiento de la fuente."""
+    manifiesto = leer_manifiesto("javeriana")
+    filas = []
+    for _, pagina in manifiesto.iterrows():
+        soup = BeautifulSoup(leer_html("javeriana", pagina["archivo"]), "html.parser")
+        for contenido in soup.find_all(class_="dircom-acordeon-content-global"):
+            filas.append({"pagina": pagina["url"].replace(JAVERIANA_BASE, ""),
+                          "seccion": limpiar_texto(contenido.find_previous("h3").get_text(" ")),
+                          "beca": limpiar_texto(contenido.find_parent(class_="dircom-wrapper-acordeon").find("p").get_text(" ")),
+                          "caracteres": len(limpiar_texto(contenido.get_text(" ")))})
+    return pd.DataFrame(filas)
+
+
+def _primera_oracion(texto, patron):
+    """Primera oración del texto que cumple el patrón (o NaN)."""
+    oraciones = re.split(r"(?<=[.;])\s+", texto)
+    return next((o for o in oraciones if re.search(patron, o, flags=re.IGNORECASE)), float("nan"))
+
+
+def leer_javeriana():
+    """Lee las páginas de becas de la Javeriana guardadas en raw: una fila por acordeón (beca).
+
+    - Nivel y tipo de estudiante salen de la página (aspirantes o estudiantes, pregrado o posgrado). En
+      posgrado, el nivel se busca en el nombre y el texto (reglas de NIVELES_ATENEA); si no lo dice, se
+      asumen los tres niveles de posgrado (inferido).
+    - Se excluyen los apoyos de movilidad (sección "movilidad" o nombre con "exterior" o "intercambio"):
+      no financian el estudio en la universidad, sino estancias fuera de ella.
+    - Si una beca aparece en varias páginas (por ejemplo, para aspirantes y para estudiantes), se une.
+    - Instrumento: crédito condonable si el nombre o la sección lo dicen; si no, beca (inferido).
+    - La Javeriana no publica fechas de convocatoria en estas páginas: quedan en NaN.
+    """
+    manifiesto = leer_manifiesto("javeriana")
+    filas = {}
+    for _, pagina in manifiesto.iterrows():
+        nivel_pagina, tipo_estudiante = PAGINAS_JAVERIANA[pagina["url"]]
+        soup = BeautifulSoup(leer_html("javeriana", pagina["archivo"]), "html.parser")
+        for contenido in soup.find_all(class_="dircom-acordeon-content-global"):
+            envoltura = contenido.find_parent(class_="dircom-wrapper-acordeon")
+            nombre = limpiar_texto(envoltura.find("p").get_text(" "))
+            seccion = limpiar_texto(contenido.find_previous("h3").get_text(" "))
+            if "movilidad" in seccion.lower() or re.search(r"exterior|intercambio", nombre, re.IGNORECASE):
+                continue
+            texto = limpiar_texto(contenido.get_text(" "))
+            if nivel_pagina == "Posgrado":
+                niveles = clasificar_por_reglas(f"{nombre}. {texto[:CARACTERES_REGLAS]}",
+                                                {n: NIVELES_ATENEA[n] for n in ["Especialización", "Maestría", "Doctorado"]})
+                niveles = niveles if isinstance(niveles, str) else SEPARADOR.join(["Especialización", "Maestría", "Doctorado"])
+            else:
+                niveles = nivel_pagina
+            if nombre in filas:  # la misma beca en otra página: se unen nivel y tipo de estudiante
+                fila = filas[nombre]
+                fila["nivel_formacion"] = SEPARADOR.join(dict.fromkeys(fila["nivel_formacion"].split(SEPARADOR)
+                                                                       + niveles.split(SEPARADOR)))
+                if fila["tipo_estudiante"] != tipo_estudiante:
+                    fila["tipo_estudiante"] = "Estudiante Nuevo y Antiguo"
+                continue
+            porcentaje_min, porcentaje_max, forma_porcentaje = extraer_porcentaje_matricula(texto)
+            area = clasificar_por_reglas(nombre, AREAS_NOMBRE_JAVERIANA)
+            ancla = envoltura.get("id")
+            filas[nombre] = {
+                "nombre": nombre,
+                "entidad": "Pontificia Universidad Javeriana",
+                "nivel_formacion": niveles,
+                "instrumento": ("Crédito condonable" if re.search(r"condonable", f"{nombre} {seccion}", re.IGNORECASE)
+                                else "Beca o subsidio de matrícula"),
+                "area": area,
+                "cobertura": _primera_oracion(texto, r"%|matr[ií]cula"),
+                "requisitos": _primera_oracion(texto, r"requisito|dirigid|podr[aá]n (?:postular|acceder)|admitid"),
+                "fecha_apertura": float("nan"),
+                "fecha_cierre": float("nan"),
+                "enlace": f"{pagina['url']}#{ancla}" if ancla else pagina["url"],
+                "fuente_url": f"{JAVERIANA_BASE}/apoyo-financiero/becas-y-descuentos",
+                "fecha_extraccion": pagina["fecha_extraccion"],
+                "porcentaje_min": porcentaje_min,
+                "porcentaje_max": porcentaje_max,
+                "forma_porcentaje": forma_porcentaje,
+                "instrumento_publicado": seccion,
+                "origen_clasificacion": "página de la entidad y reglas de texto (inferido)",
+                "requisitos_origen": "html",
+                "tipo_estudiante": tipo_estudiante,
+                "descripcion": texto,
+                "area_conocimiento": area if isinstance(area, str) else CUALQUIER_AREA,
+            }
+    print(f"Javeriana: {len(filas)} becas (sin las de movilidad)")
+    return pd.DataFrame(list(filas.values())).reindex(columns=ESQUEMA + COLUMNAS_EXTRA)
 
 
 # --------------------------------------------------------------------------------------
@@ -696,10 +877,10 @@ def unir_categorias(columna, orden=()):
 def situacion_linea(entidad, ediciones):
     """Situación de una línea de apoyo en la fecha de la foto, según sus ediciones (inferido en Atenea).
     Una línea de Atenea sin convocatorias en los 12 meses anteriores a la foto se marca como posiblemente
-    terminada; los apoyos de Uniandes son permanentes mientras sigan en el catálogo."""
+    terminada; los apoyos de las universidades son permanentes mientras sigan en su catálogo."""
     if ediciones["estado"].isin(["abierta", "próxima"]).any():
         return "abierta o próxima en la foto"
-    if entidad == "Universidad de los Andes":
+    if entidad != "Agencia Atenea":
         return "en el catálogo, sin convocatoria abierta"
     ultima = ediciones["fecha_apertura"].max()
     if pd.isna(ultima):
@@ -711,11 +892,13 @@ def situacion_linea(entidad, ediciones):
 
 def ficha_por_linea(base, orden_nivel=(), orden_instrumento=()):
     """Una fila por línea de apoyo: en Atenea reúne todas las ediciones (convocatorias) de la línea; en
-    Uniandes cada apoyo del catálogo es su propia línea. El enlace es el de la edición más reciente."""
-    es_uniandes = base["entidad"] == "Universidad de los Andes"
-    base = base.assign(linea=base["nombre"].where(es_uniandes, base["nombre"].map(linea_atenea)),
-                       # En Uniandes se agrupa por enlace: dos apoyos distintos pueden tener el mismo nombre.
-                       clave=base["enlace"].where(es_uniandes, base["nombre"].map(linea_atenea)))
+    las universidades (Uniandes y Javeriana) cada apoyo es su propia línea. El enlace es el de la edición más reciente."""
+    es_universidad = base["entidad"] != "Agencia Atenea"
+    base = base.assign(linea=base["nombre"].where(es_universidad, base["nombre"].map(linea_atenea)),
+                       # En las universidades cada apoyo es su propia línea (por enlace y nombre: dos apoyos
+                       # distintos pueden compartir página o nombre).
+                       clave=(base["enlace"] + " | " + base["nombre"]).where(es_universidad,
+                                                                         base["nombre"].map(linea_atenea)))
     filas = []
     for (entidad, _), ediciones in base.sort_values("fecha_apertura").groupby(["entidad", "clave"]):
         linea = ediciones["linea"].iloc[0]

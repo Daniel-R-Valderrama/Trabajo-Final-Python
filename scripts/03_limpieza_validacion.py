@@ -36,14 +36,15 @@ print("\nFaltantes por entidad:")
 print(becas_apoyos[COLUMNAS_TEXTO + COLUMNAS_FECHA].isna().groupby(becas_apoyos["entidad"]).sum().to_string())
 
 # %% 2. Duplicados
-# Un registro es la misma convocatoria si repite el enlace. Nombres repetidos con enlaces distintos
-# son convocatorias diferentes del mismo programa (por ejemplo, dos aperturas del mismo fondo): se conservan.
+# Un registro está duplicado si repite enlace y nombre. Varios apoyos distintos pueden compartir una
+# página (las becas de la Javeriana, o dos becas de maestrías virtuales de Uniandes), y nombres repetidos
+# con enlaces distintos son convocatorias diferentes del mismo programa: en ambos casos se conservan.
 print("\nFilas idénticas:", becas_apoyos.duplicated().sum())
-print("Enlaces repetidos:", becas_apoyos["enlace"].duplicated().sum())
+print("Enlace y nombre repetidos:", becas_apoyos.duplicated(["enlace", "nombre"]).sum())
 repetidos = becas_apoyos[becas_apoyos.duplicated(["entidad", "nombre"], keep=False)]
 print("Nombres repetidos dentro de una entidad (enlaces distintos):")
 print(repetidos[["entidad", "nombre", "fecha_apertura", "enlace"]].to_string(index=False))
-becas_apoyos = becas_apoyos.drop_duplicates(subset="enlace")
+becas_apoyos = becas_apoyos.drop_duplicates(subset=["enlace", "nombre"])
 
 # %% 3. Limpieza de texto
 # Se quitan caracteres invisibles (espacio de ancho cero en algunas páginas de Atenea), espacios

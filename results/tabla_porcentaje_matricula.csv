@@ -1,9 +1,15 @@
-﻿,,apoyos,minimo,mediana,maximo
-Instrumento,Beca o subsidio de matrícula,27,15.0,95.0,100.0
-Instrumento,Descuento,4,5.0,12.5,20.0
-Instrumento,Crédito,9,75.0,90.0,100.0
-Instrumento,Crédito condonable,4,50.0,85.0,90.0
-Nivel de formación,Pregrado universitario,22,15.0,92.5,100.0
-Nivel de formación,Especialización,6,5.0,50.0,100.0
-Nivel de formación,Maestría,20,5.0,80.0,100.0
-Nivel de formación,Doctorado,5,5.0,80.0,100.0
+﻿,,,apoyos,minimo,mediana,maximo
+Uniandes,Instrumento,Beca o subsidio de matrícula,28,15.0,92.5,100.0
+Uniandes,Instrumento,Descuento,4,5.0,12.5,20.0
+Uniandes,Instrumento,Crédito,9,75.0,90.0,100.0
+Uniandes,Instrumento,Crédito condonable,4,50.0,85.0,90.0
+Uniandes,Nivel de formación,Pregrado universitario,22,15.0,92.5,100.0
+Uniandes,Nivel de formación,Especialización,6,5.0,50.0,100.0
+Uniandes,Nivel de formación,Maestría,21,5.0,80.0,100.0
+Uniandes,Nivel de formación,Doctorado,5,5.0,80.0,100.0
+Javeriana,Instrumento,Beca o subsidio de matrícula,11,10.0,50.0,100.0
+Javeriana,Instrumento,Crédito condonable,3,50.0,100.0,100.0
+Javeriana,Nivel de formación,Pregrado universitario,11,10.0,50.0,100.0
+Javeriana,Nivel de formación,Especialización,1,10.0,10.0,10.0
+Javeriana,Nivel de formación,Maestría,3,10.0,50.0,100.0
+Javeriana,Nivel de formación,Doctorado,3,10.0,100.0,100.0

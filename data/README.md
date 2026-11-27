@@ -2,10 +2,10 @@
 
 `data/raw/` guarda las copias crudas que descargan las funciones `descargar_<fuente>()` de `utils/scrapers.py`, llamadas desde `tutorial.ipynb` o `scripts/02_extraccion.py` cuando `ACTUALIZAR_DATOS = True`. Nunca se editan a mano y aquí no se guarda nada procesado.
 
-- Hay una carpeta por fuente (`uniandes/`, `atenea/`). Las páginas HTML se guardan comprimidas (`.html.gz`), los PDF tal cual y los catálogos de Uniandes como `.json`.
+- Hay una carpeta por fuente (`uniandes/`, `atenea/`, `javeriana/`). Las páginas HTML se guardan comprimidas (`.html.gz`), los PDF tal cual y los catálogos de Uniandes como `.json`.
 - Cada carpeta tiene un `manifiesto.csv` con una fila por archivo: `tipo_pagina`, `url`, `archivo`, `codigo_http` y `fecha_extraccion`.
 - Una nueva descarga se escribe primero en `<fuente>_descarga/` y solo reemplaza la carpeta cuando termina: si se interrumpe, la copia anterior queda intacta.
-- **Fechas de extracción de la copia actual:** 2026-11-18 para Atenea; 2026-11-22 para Uniandes. El estado de cada registro se calcula frente a la fecha de su fuente.
+- **Fechas de extracción de la copia actual:** 2026-11-18 para Atenea; 2026-11-22 para Uniandes; 2026-11-27 para la Javeriana. El estado de cada registro se calcula frente a la fecha de su fuente.
 - El SENA (Betowa) se revisó en el reconocimiento de fuentes, pero quedó fuera de la pregunta; su caché ya no está en `data/raw/`.
 
 ## Esquema común
@@ -15,10 +15,10 @@ Las funciones `leer_<fuente>()` convierten los archivos crudos en un DataFrame d
 | Columna | Contenido |
 |---|---|
 | `nombre` | Nombre del apoyo o convocatoria. |
-| `entidad` | Universidad de los Andes o Agencia Atenea. |
-| `nivel_formacion` | Formación para el trabajo y cursos cortos, Técnico y tecnológico, Pregrado universitario, Especialización, Maestría o Doctorado. Uniandes lo publica; en Atenea es inferido. |
-| `instrumento` | Beca o subsidio de matrícula, Descuento, Crédito, Crédito condonable, Crédito con pago contingente, Apoyo de sostenimiento o Formación sin costo. Uniandes lo publica (agrupado); en Atenea es inferido. |
-| `area` | Uniandes: facultades del programa (publicadas). Atenea: área o sector que declara la convocatoria (inferido). |
+| `entidad` | Agencia Atenea, Universidad de los Andes o Pontificia Universidad Javeriana. |
+| `nivel_formacion` | Formación para el trabajo y cursos cortos, Técnico y tecnológico, Pregrado universitario, Especialización, Maestría o Doctorado. Uniandes lo publica; en la Javeriana sale de la página (en posgrado, inferido); en Atenea es inferido. |
+| `instrumento` | Beca o subsidio de matrícula, Descuento, Crédito, Crédito condonable, Crédito con pago contingente, Apoyo de sostenimiento o Formación sin costo. Uniandes lo publica (agrupado); en la Javeriana y en Atenea es inferido. |
+| `area` | Uniandes: facultades del programa (publicadas). Atenea: área o sector que declara la convocatoria (inferido). Javeriana: área que indica el nombre de la beca (inferido). |
 | `programas` | Programas a los que aplica (solo Uniandes lo publica). |
 | `cobertura` | Qué cubre, tal como lo publica la entidad (texto). |
 | `requisitos` | Requisitos o población a la que va dirigido (texto). |
@@ -26,25 +26,28 @@ Las funciones `leer_<fuente>()` convierten los archivos crudos en un DataFrame d
 | `enlace` | Página del apoyo. |
 | `fuente_url` | Sección o listado de donde se tomó. |
 | `fecha_extraccion` | Día de la descarga (del manifiesto). |
-| `porcentaje_min`, `porcentaje_max`, `forma_porcentaje` | Columnas adicionales: % de la matrícula que cubre, según el texto de cobertura (`extraer_porcentaje_matricula`). Solo cuenta si "matrícula" aparece justo después del número. `forma_porcentaje`: "exacto" ("Cubre 95 %"), "hasta" (tope: `porcentaje_min` queda NaN) o "rango" ("del 25 % hasta el 95 %"). Uniandes lo publica en 44 de 52 apoyos (27 son topes); Atenea, en 3 de 54 (todas 100 %). |
+| `porcentaje_min`, `porcentaje_max`, `forma_porcentaje` | Columnas adicionales: % de la matrícula que cubre, según el texto de cobertura (`extraer_porcentaje_matricula`). Solo cuenta si "matrícula" aparece justo después del número. `forma_porcentaje`: "exacto" ("Cubre 95 %"), "hasta" (tope: `porcentaje_min` queda NaN) o "rango" ("del 25 % hasta el 95 %"). Uniandes lo publica en 45 de 53 apoyos (28 son topes); la Javeriana, en 14 de 19; Atenea, en 3 de 54 (todas 100 %). |
 | `n_programas` | Columna adicional: número de programas a los que aplica (Uniandes). |
 | `instrumento_publicado` | Columna adicional: tipo de apoyo tal como lo nombra Uniandes, antes de agruparlo. |
-| `origen_clasificacion` | Columna adicional: "catálogo de la entidad" (Uniandes) o "reglas de texto (inferido)" (Atenea). |
+| `origen_clasificacion` | Columna adicional: "catálogo de la entidad" (Uniandes), "página de la entidad y reglas de texto (inferido)" (Javeriana) o "reglas de texto (inferido)" (Atenea). |
 | `requisitos_origen` | Columna adicional: `api`, `html`, `pdf` o NaN. |
-| `estado_publicado` | Columna adicional: estado que muestra Atenea en su listado (Uniandes no lo publica). |
+| `estado_publicado` | Columna adicional: estado que muestra Atenea en su listado (las universidades no lo publican). |
+| `tipo_estudiante` | Columna adicional: "Estudiante Nuevo", "Estudiante Antiguo" o "Estudiante Nuevo y Antiguo". Uniandes lo publica (`tipoDeEstudiante`); en la Javeriana sale de la página (aspirantes o estudiantes); Atenea no lo publica (NaN). |
+| `descripcion` | Columna adicional: texto completo que describe el apoyo. Uniandes: sección "Descripción" de la ficha o, si no la tiene, "Cobertura"; Javeriana: texto del acordeón; Atenea: la cobertura. |
+| `area_conocimiento` | Columna adicional (inferido): área de conocimiento del SNIES, común a las tres fuentes (`AREAS_SNIES`). Uniandes: sus facultades traducidas con `AREA_FACULTAD_UNIANDES`; Atenea: el sector declarado traducido con `AREA_SECTOR_ATENEA`; Javeriana: `AREAS_NOMBRE_JAVERIANA`. Los apoyos que no restringen el área quedan como "Cualquier área": sirven para los programas que ofrezca la institución, no para todas las áreas del SNIES. |
 
 ## Limpieza y validación (`tutorial.ipynb`, sección 4, o `scripts/03_limpieza_validacion.py`)
 
-El resultado es `results/becas_apoyos.csv` (106 filas: 52 de Uniandes y 54 de Atenea). Decisiones:
+El resultado es `results/becas_apoyos.csv` (126 filas: 54 de Atenea, 53 de Uniandes y 19 de la Javeriana). Decisiones:
 
-- **Duplicados:** no hay filas idénticas. El catálogo de Uniandes repite 2 enlaces (dos apoyos comparten ficha); se conserva el primero. Los nombres repetidos con enlace distinto son aperturas distintas del mismo programa y se conservan.
+- **Duplicados:** no hay filas idénticas. Un registro está duplicado si repite enlace y nombre: solo hay uno, un apoyo de Uniandes que el catálogo repite. Varios apoyos distintos pueden compartir página (las becas de la Javeriana, o dos becas de maestrías virtuales de Uniandes) y se conservan. Los nombres repetidos con enlace distinto son aperturas distintas del mismo programa y se conservan.
 - **Texto:** se quitan caracteres invisibles y espacios sobrantes, sin cambiar el contenido.
 - **Fechas:** pasan a datetime en hora de Bogotá. Ninguna fecha publicada quedó sin convertir y no hay cierres anteriores a la apertura. Las fechas no se analizan: solo sirven para saber qué convocatorias siguen vigentes.
 - **Alcance:** se excluyen 14 convocatorias de Atenea que financian proyectos de investigación, empresas (Mipymes) o prácticas laborales. No son apoyos educativos para personas (regla `PATRON_NO_ESTUDIANTES` en `utils/scrapers.py`).
 - **`estado`:** abierta, cerrada (vencida), próxima o sin fecha, a la fecha de extracción de cada fuente; `criterio_estado` dice qué regla se usó.
   - En Atenea, el estado calculado con las fechas coincide con el que publica la entidad en las 52 convocatorias donde se pueden comparar. Uniandes no publica un estado propio, así que no se puede validar así.
   - Las cerradas siguen en el análisis, pero la app no las muestra.
-- **`enlace_valido`:** True si el enlace respondió HTTP 200 al validarlo: 106 de 106 (los de Atenea el 2026-11-18; los de Uniandes, el 2026-11-18 o el 2026-11-26 los que no estaban en la validación guardada). El resultado queda en `results/validacion_enlaces.csv` (que también conserva los enlaces del SENA validados antes). Con `ACTUALIZAR_DATOS = False` se reutiliza y solo se visitan los enlaces que falten; un enlace sin validar nunca se marca como no válido.
+- **`enlace_valido`:** True si el enlace respondió HTTP 200 al validarlo: 126 de 126 (los de Atenea el 2026-11-18; los de Uniandes, el 2026-11-18 o el 2026-11-26 los que no estaban en la validación guardada; los de la Javeriana, el 2026-11-27). El resultado queda en `results/validacion_enlaces.csv` (que también conserva los enlaces del SENA validados antes). Con `ACTUALIZAR_DATOS = False` se reutiliza y solo se visitan los enlaces que falten; un enlace sin validar nunca se marca como no válido.
 - **`alertas`:** sin requisitos, sin fecha de cierre, enlace no válido y cierre antes de apertura. En las convocatorias cerradas de Atenea, "sin requisitos" es esperado porque sus PDF no se descargan.
 
 ## Universidad de los Andes — Apoyo Financiero
@@ -55,13 +58,13 @@ El resultado es `results/becas_apoyos.csv` (106 filas: 52 de Uniandes y 54 de At
 - **Fichas individuales:** cada apoyo tiene una ficha en `apoyofinanciero.uniandes.edu.co`, que se descarga respetando `robots.txt` y con pausas.
 - **Formato:** JSON para el catálogo de apoyos y de programas; HTML estático (`.html.gz`) para las fichas.
 - **Fecha de extracción:** 2026-11-22. Se bajaron los 2 JSON del catálogo y 52 fichas (una por enlace distinto).
-- **Qué representa una fila:** un apoyo del catálogo (54 en total; 52 tras deduplicar enlaces). Un apoyo puede abrir convocatorias cada periodo. El método anterior (recorrer el `sitemap.xml`) solo encontraba 18 apoyos con ficha completa.
+- **Qué representa una fila:** un apoyo del catálogo (54 en total; 53 tras quitar un apoyo repetido). Un apoyo puede abrir convocatorias cada periodo. El método anterior (recorrer el `sitemap.xml`) solo encontraba 18 apoyos con ficha completa.
 - **Cómo se llena cada campo:**
   - `nombre`: nombre oficial del apoyo (`nombreDelApoyo`).
   - `nivel_formacion`: `nivelAcadémico` ("Pregrado" pasa a "Pregrado universitario").
   - `instrumento`: `tipoDeApoyo` agrupado (`INSTRUMENTO_UNIANDES`): Beca y Beca con compromiso → Beca o subsidio de matrícula; Préstamo → Crédito; Préstamo Condonable → Crédito condonable; Descuento; Sostenimiento → Apoyo de sostenimiento. El original queda en `instrumento_publicado`.
   - `area` y `programas`: códigos de facultad y de programa traducidos a nombres con el catálogo de programas (`api_programs`, 12 facultades y 194 programas con nombre distinto).
-  - `cobertura`: qué cubre (`cubre`); `requisitos`: población objetivo (`dirigidoA`).
+  - `cobertura`: qué cubre (`cubre`); `requisitos`: población objetivo (`dirigidoA`); `tipo_estudiante`: `tipoDeEstudiante`; `descripcion`: sección "Descripción" de la ficha (22 fichas) o, si no la tiene, "Cobertura".
   - `fecha_apertura` y `fecha_cierre`: del bloque "Fechas de convocatoria" de cada ficha (función `extraer_fechas_uniandes`). 34 de los 54 apoyos publican fechas reconocibles (33 de los 52 tras deduplicar).
 - **Problemas conocidos:**
   - Las fichas que dicen "Cerrada" o "En definición" quedan "sin fecha", no como cerradas.
@@ -89,6 +92,24 @@ El resultado es `results/becas_apoyos.csv` (106 filas: 52 de Uniandes y 54 de At
   - De las 54 convocatorias del análisis, 7 quedan sin nivel y 23 sin instrumento. 15 de esas 23 son cursos de Talento Capital o Todos a la U, que no dicen en su descripción cómo se financian. 41 no declaran área: financian cualquier programa de sus instituciones aliadas.
   - Las reglas pueden equivocarse con redacciones inesperadas (por ejemplo, el nombre de una institución, "Universitaria Agustiniana", cuenta como pregrado universitario).
   - Los PDF de lineamiento solo se descargan para las convocatorias no finalizadas, así que las finalizadas quedan sin requisitos.
+
+## Pontificia Universidad Javeriana — Apoyo Financiero
+
+- **Sección de becas:** https://www.javeriana.edu.co/apoyo-financiero/becas-y-descuentos
+- **Páginas que se descargan** (`PAGINAS_JAVERIANA`): becas para aspirantes de pregrado, para aspirantes de posgrado y para estudiantes de pregrado. Cada beca es un acordeón con su título y su texto completo.
+- **robots.txt:** permite las tres páginas (revisado el 2026-11-27).
+- **Formato:** HTML estático (`.html.gz`). Herramientas: `requests` y `BeautifulSoup`.
+- **Fecha de extracción:** 2026-11-27.
+- **Qué representa una fila:** una beca (acordeón). Hay 31 acordeones; quedan 19 becas al excluir los apoyos de movilidad (sección "movilidad" o nombre con "exterior" o "intercambio": financian estancias fuera de la universidad) y unir las becas que aparecen en dos páginas.
+- **Cómo se llena cada campo:**
+  - `nivel_formacion` y `tipo_estudiante`: de la página (pregrado o posgrado; aspirantes = "Estudiante Nuevo", estudiantes = "Estudiante Antiguo"). En posgrado, el nivel se busca en el nombre y el texto; si no lo dice, se asumen los tres niveles de posgrado (inferido).
+  - `instrumento`: "Crédito condonable" si el nombre o la sección lo dicen; si no, "Beca o subsidio de matrícula" (inferido). La sección queda en `instrumento_publicado`.
+  - `cobertura`: primera oración con un porcentaje o con "matrícula"; `requisitos`: primera oración sobre requisitos, a quién va dirigida o admitidos; `descripcion`: texto completo del acordeón.
+  - `area` y `area_conocimiento`: solo tres becas indican un área en su nombre (música, licenciaturas y maestrías de la Facultad de Ciencias); las demás quedan como "Cualquier área" (inferido).
+  - `enlace`: la página de la beca (con el ancla del acordeón cuando la tiene).
+- **Problemas conocidos:**
+  - No publica fechas de convocatoria en estas páginas: todas las becas quedan "sin fecha".
+  - No se incluyen los descuentos ni las becas de posgrado para estudiantes, que están en páginas sin acordeones (la segunda en el dominio `intranet.javeriana.edu.co`).
 
 ### SICORE (fuera del alcance)
 
