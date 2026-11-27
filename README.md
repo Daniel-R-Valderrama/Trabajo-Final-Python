@@ -60,6 +60,7 @@ Se abre en http://localhost:8501 y se cierra con Ctrl+C en la terminal.
 
 - Muestra exactamente la tabla que deja el tutorial (`results/becas_apoyos.csv`); no raspa nada ni necesita internet.
 - **Datos más recientes:** en el tutorial se pone `ACTUALIZAR_DATOS = True`, se da *Run All* (unos 10 minutos, con internet) y se vuelve a cargar la app.
+- También muestra las líneas de apoyo de Atenea que se repiten (`results/tabla_lineas_apoyo.csv`, sección 8 del tutorial), para saber qué buscar cuando una convocatoria ya cerró. El tema visual está en `.streamlit/config.toml`.
 - No muestra las convocatorias vencidas. Tiene un buscador por texto (no distingue tildes ni mayúsculas) y filtros por entidad, nivel de formación, instrumento financiero, facultad o área, porcentaje mínimo de la matrícula y estado (por defecto, abiertas y próximas).
 
 ## Contenido del .zip
@@ -78,4 +79,4 @@ Se comprime la carpeta del proyecto **sin** `.venv/`, `__pycache__/` ni `.ipynb_
 | `results/tabla_nivel.csv`, `results/tabla_instrumento.csv`, `results/tabla_porcentaje_matricula.csv`, `results/tabla_nivel_instrumento.csv`, `results/tabla_area.csv`, `results/tabla_alcance_programas.csv`, `results/tabla_apoyos_por_programa.csv` | `tutorial.ipynb` (sección 5) o `scripts/04_analisis.py` | `results/becas_apoyos.csv` (y el catálogo de programas de Uniandes en `data/raw/uniandes/`) |
 | `results/tabla_lineas_apoyo.csv`, `results/tabla_efecto_lineas.csv`, `results/guia_por_perfil.csv` | `tutorial.ipynb` (sección 8, mejora sugerida por la IA) o `scripts/04_analisis.py` | `results/becas_apoyos.csv` |
 | `figures/nivel_por_entidad.png`, `figures/instrumento_por_entidad.png`, `figures/porcentaje_matricula.png`, `figures/nivel_instrumento.png`, `figures/area_por_entidad.png` (cada una lo indica en su pie) | `tutorial.ipynb` (sección 5) o `scripts/04_analisis.py` | `results/becas_apoyos.csv` |
-| App web | `app.py` (Streamlit) | `results/becas_apoyos.csv` |
+| App web | `app.py` (Streamlit) | `results/becas_apoyos.csv` y `results/tabla_lineas_apoyo.csv` |

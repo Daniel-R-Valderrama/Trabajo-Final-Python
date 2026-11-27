@@ -1,0 +1,12 @@
+# Tema visual de la app (app.py): fondo claro y color principal morado.
+[theme]
+base = "light"
+primaryColor = "#5046E5"
+backgroundColor = "#F7F7FB"
+secondaryBackgroundColor = "#EEEDFB"
+textColor = "#1F2133"
+font = "sans serif"
+
+[browser]
+# No envía estadísticas de uso a Streamlit.
+gatherUsageStats = false
