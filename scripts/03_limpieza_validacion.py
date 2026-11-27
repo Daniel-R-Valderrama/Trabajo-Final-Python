@@ -59,7 +59,6 @@ for columna in COLUMNAS_FECHA:
     sin_convertir = becas_apoyos[columna].notna() & convertidas.isna()
     print(f"{columna}: {int(sin_convertir.sum())} fechas publicadas que no se pudieron convertir")
     becas_apoyos[columna] = pd.to_datetime(convertidas)
-becas_apoyos["fin_periodo"] = pd.to_datetime(becas_apoyos["periodos_cursos"].map(scrapers.fin_ultimo_periodo))
 
 # %% 5. Valores atípicos en las fechas
 # Se revisan dos cosas: cierres anteriores a la apertura (error de publicación) y ventanas de
@@ -107,31 +106,12 @@ print("\nEnlaces válidos por entidad:")
 print(becas_apoyos.groupby("entidad")["enlace_valido"].agg(["sum", "count"]).to_string())
 
 # %% 9. Alertas de calidad por registro
-# Resumen de lo que un aspirante debería verificar antes de confiar en el registro.
-def alertas_de(fila):
-    """Lista de problemas de calidad de un registro (NaN si no tiene ninguno)."""
-    alertas = []
-    if pd.isna(fila["requisitos"]):
-        alertas.append("sin requisitos")
-    if pd.isna(fila["fecha_cierre"]):
-        alertas.append("sin fecha de cierre")
-    if not fila["enlace_valido"]:
-        alertas.append("enlace no válido")
-    if fila["dias_ventana"] < 0:
-        alertas.append("cierre antes de apertura")
-    if fila["criterio_estado"] == "período académico terminado (inferido)":
-        alertas.append("período vencido aún publicado")
-    return "; ".join(alertas) or float("nan")
-
-
-becas_apoyos["alertas"] = becas_apoyos.apply(alertas_de, axis=1)
+# Resumen de lo que un aspirante debería verificar antes de confiar en el registro (scrapers.alertas_de).
+becas_apoyos["alertas"] = becas_apoyos.apply(scrapers.alertas_de, axis=1)
 print("\nAlertas más frecuentes por entidad:")
 print(becas_apoyos.groupby("entidad")["alertas"].value_counts(dropna=False).to_string())
 
 # %% 10. Guardado
-COLUMNAS_FINALES = scrapers.ESQUEMA + ["estado", "criterio_estado", "enlace_valido", "codigo_http",
-                                       "fecha_validacion", "alertas", "dias_ventana", "estado_publicado",
-                                       "requisitos_origen", "periodos_cursos", "fin_periodo"]
-becas_apoyos = becas_apoyos[COLUMNAS_FINALES]
+becas_apoyos = becas_apoyos[scrapers.COLUMNAS_FINALES]
 becas_apoyos.to_csv("results/becas_apoyos.csv", index=False, encoding="utf-8-sig")
 print(f"\nGuardado results/becas_apoyos.csv ({len(becas_apoyos)} filas)")

@@ -1,20 +1,24 @@
 """Funciones auxiliares reutilizables del proyecto.
 
-Hay dos tipos de funciones por fuente:
+Hay dos tipos de funciones por fuente (Universidad de los Andes y Agencia Atenea):
 - descargar_<fuente>(): recorre el sitio (respetando robots.txt y con pausas) y guarda los
   insumos crudos en data/raw/<fuente>/ junto con un manifiesto (qué URL, qué archivo, qué fecha).
   Solo se usa cuando ACTUALIZAR_DATOS = True.
 - leer_<fuente>(): lee esos archivos crudos (sin internet) y devuelve un DataFrame con el esquema común.
 
-Al final están las funciones de limpieza (texto y fechas), de estado de las convocatorias y de
-validación de enlaces que usa la Fase 3.
+Uniandes publica el nivel de formación, el instrumento y los programas en su catálogo; en Atenea
+esas columnas se deducen del texto con reglas explícitas (NIVELES_ATENEA, INSTRUMENTOS_ATENEA,
+AREAS_ATENEA). Al final están las funciones de limpieza (texto y fechas), de estado de las
+convocatorias y de validación de enlaces.
 
 Las páginas HTML se guardan comprimidas (.html.gz) para que el .zip del tutorial no pese demasiado.
 Todas las rutas son relativas a la raíz del proyecto.
 """
 
 import gzip
+import json
 import re
+import shutil
 import time
 from datetime import date
 from pathlib import Path
@@ -43,17 +47,67 @@ UNIANDES_API_HEADERS = {
     "x-connection-code": "19"
 }
 ATENEA_BASE = "https://www.agenciaatenea.gov.co"
-BETOWA_BASE = "https://betowa.sena.edu.co"
-# Código de ubicación de Bogotá en el filtro de Betowa (visto en la URL al filtrar por "Bogotá").
-BETOWA_BOGOTA = "57011001"
 
-ESQUEMA = ["nombre", "entidad", "tipo", "cobertura", "requisitos", "fecha_apertura",
-           "fecha_cierre", "enlace", "fuente_url", "fecha_extraccion"]
-# Columnas adicionales que ayudan a validar en la Fase 3:
-# - requisitos_origen: de dónde salió el texto de requisitos (html, pdf o NaN).
+# Separador de las columnas que pueden tener varios valores (un apoyo puede servir a varios niveles).
+SEPARADOR = "; "
+
+ESQUEMA = ["nombre", "entidad", "nivel_formacion", "instrumento", "area", "programas", "cobertura",
+           "requisitos", "fecha_apertura", "fecha_cierre", "enlace", "fuente_url", "fecha_extraccion"]
+# Columnas adicionales:
+# - n_programas: número de programas a los que aplica (solo Uniandes lo publica).
+# - instrumento_publicado: tipo de apoyo tal como lo nombra Uniandes, antes de agruparlo.
+# - origen_clasificacion: si nivel, instrumento y área vienen del catálogo de la entidad o de reglas de texto.
+# - requisitos_origen: de dónde salió el texto de requisitos (api, html, pdf o NaN).
 # - estado_publicado: estado que la propia entidad muestra (solo Atenea lo publica).
-# - periodos_cursos: períodos académicos de los cursos (solo Betowa; no publica fecha de cierre).
-COLUMNAS_EXTRA = ["requisitos_origen", "estado_publicado", "periodos_cursos"]
+# - porcentaje_min, porcentaje_max, forma_porcentaje: % de la matrícula que cubre, según el texto publicado
+#   (extraer_porcentaje_matricula).
+COLUMNAS_EXTRA = ["porcentaje_min", "porcentaje_max", "forma_porcentaje", "n_programas", "instrumento_publicado",
+                  "origen_clasificacion", "requisitos_origen", "estado_publicado"]
+
+# Categorías comunes de instrumento financiero. Uniandes publica su propio tipo de apoyo y se agrupa así:
+INSTRUMENTO_UNIANDES = {
+    "Beca": "Beca o subsidio de matrícula",
+    "Beca con compromiso": "Beca o subsidio de matrícula",
+    "Préstamo": "Crédito",
+    "Préstamo Condonable": "Crédito condonable",
+    "Descuento": "Descuento",
+    "Sostenimiento": "Apoyo de sostenimiento",
+}
+# Uniandes publica "Pregrado"; se nombra igual que en Atenea para poder comparar.
+NIVEL_UNIANDES = {"Pregrado": "Pregrado universitario"}
+
+# Reglas para Atenea, que no publica estas categorías en campos aparte. Se buscan en el nombre y en los
+# primeros CARACTERES_REGLAS caracteres de la descripción: ahí cada convocatoria dice qué financia.
+# Más adelante muchas páginas listan documentos o requisitos de exclusión ("no haber cursado un programa
+# técnico, tecnológico o universitario"), que producirían falsos positivos.
+CARACTERES_REGLAS = 1000
+NIVELES_ATENEA = {
+    "Formación para el trabajo y cursos cortos": (
+        r"formaci[oó]n para el trabajo|t[eé]cnicos?[- ]laboral|ciclos? cortos?|talento capital|todos a la u"
+        r"|cursos? (?:de formaci[oó]n|virtual|gratuit)|el curso es gratuito|ingl[eé]s|habilidades digitales|\betdh\b"),
+    "Técnico y tecnológico": r"t[eé]cnic[oa]s?[- ]profesional|tecnol[oó]gic[oa]s?\b|t[eé]cnica y tecnol",
+    "Pregrado universitario": r"universitari|pregrado|universidades?:",
+    "Especialización": r"especializaci[oó]n",
+    "Maestría": r"maestr[ií]a",
+    "Doctorado": r"doctorado",
+}
+INSTRUMENTOS_ATENEA = {
+    "Beca o subsidio de matrícula": r"\bbecas?\b|\bsubsidi|cubre[^.]{0,40}matr[ií]cula|valor de la matr[ií]cula",
+    "Crédito condonable": r"condonable",
+    "Crédito con pago contingente": r"contingente",
+    "Apoyo de sostenimiento": r"sostenimiento|apoyo econ[oó]mico|canasta",
+    "Formación sin costo": r"\bgratuit",
+}
+# Área o sector que la convocatoria declara. Las siglas (TI, STEM, BPO) solo cuentan en mayúsculas.
+AREAS_ATENEA = {
+    "Tecnologías digitales": (r"habilidades digitales|marketing digital|(?-i:\bTI\b)|\bnube\b|software"
+                              r"|tecnolog[ií]as de la informaci|inteligencia artificial|creativas digitales"),
+    "Idiomas": r"ingl[eé]s|segunda lengua",
+    "Ciencia y tecnología (STEM)": r"(?-i:\bSTEM\b)",
+    "Construcción": r"\bconstrucci[oó]n\b",
+    "Servicios (turismo, belleza, salud y otros)": (r"(?-i:\bBPO\b)|turismo|belleza|gastronom|cosmetolog"
+                                                     r"|salud y cuidado|pecuario|sector de servicios"),
+}
 
 
 def limpiar_texto(texto):
@@ -62,21 +116,37 @@ def limpiar_texto(texto):
     return texto or float("nan")
 
 
-def texto_de_seccion(titulo, siguiente_clase="uk-panel"):
-    """Texto del primer bloque con la clase indicada que sigue a un título (estructura de Joomla/YOOtheme)."""
-    bloque = titulo.find_next(class_=siguiente_clase)
-    return limpiar_texto(bloque.get_text(" ")) if bloque else float("nan")
+def clasificar_por_reglas(texto, reglas):
+    """Categorías cuya regla (expresión regular) aparece en el texto, unidas con SEPARADOR; NaN si ninguna."""
+    categorias = [nombre for nombre, patron in reglas.items() if re.search(patron, texto, flags=re.IGNORECASE)]
+    return SEPARADOR.join(categorias) or float("nan")
 
 
-def clasificar_tipo(texto):
-    """Clasifica un apoyo con una regla explícita sobre su nombre y descripción:
-    'formación gratuita' si lo dice el texto; 'beca' si menciona beca; si no, 'apoyo financiero'."""
-    texto = str(texto).lower()
-    if "formación gratuita" in texto:
-        return "formación gratuita"
-    if "beca" in texto:
-        return "beca"
-    return "apoyo financiero"
+# Porcentaje de la matrícula: solo cuenta si la palabra "matrícula" aparece en los 60 caracteres siguientes,
+# para no confundirlo con "100 % condonables", "1 % de mejores resultados" o "100 % de los intereses".
+_CERCA_DE_MATRICULA = r"(?=[^.]{0,60}matr[ií]cula)"
+_PATRONES_PORCENTAJE = [
+    ("rango", r"(?:del|entre(?: el)?)\s*(\d{1,3})\s?%\s*(?:hasta el|y el|al)\s*(\d{1,3})\s?%" + _CERCA_DE_MATRICULA),
+    ("hasta", r"hasta (?:el |un |en un )?(\d{1,3})\s?%" + _CERCA_DE_MATRICULA),
+    ("exacto", r"(\d{1,3})\s?%" + _CERCA_DE_MATRICULA),
+]
+
+
+def extraer_porcentaje_matricula(texto):
+    """% de la matrícula que cubre un apoyo, según su texto: (mínimo, máximo, forma).
+
+    - 'rango': "del 25 % hasta el 95 %" o "entre el 12 % y el 20 %" → (25, 95).
+    - 'hasta': "hasta el 90 %" → (NaN, 90): es un tope; el valor final depende de cada caso.
+    - 'exacto': "Cubre 95 % del valor de la matrícula" → (95, 95).
+    Si el texto no da un porcentaje de la matrícula ("un porcentaje", "hasta 2 SMLMV"), devuelve NaN.
+    """
+    for forma, patron in _PATRONES_PORCENTAJE:
+        encontrado = re.search(patron, str(texto), flags=re.IGNORECASE)
+        if encontrado:
+            numeros = [float(n) for n in encontrado.groups()]
+            minimo = float("nan") if forma == "hasta" else numeros[0]
+            return minimo, numeros[-1], forma
+    return float("nan"), float("nan"), float("nan")
 
 
 # --------------------------------------------------------------------------------------
@@ -86,11 +156,16 @@ class Descargador:
     """Descarga URL de un sitio respetando su robots.txt y guarda cada respuesta en data/raw/<fuente>/.
 
     Lleva un manifiesto con una fila por archivo: tipo de página, URL, archivo y fecha de extracción.
+    Los archivos se escriben primero en una carpeta temporal (<fuente>_descarga) y solo reemplazan
+    a la caché anterior cuando la descarga termina (guardar_manifiesto): si algo falla a mitad de
+    camino, la caché anterior queda intacta.
     """
 
     def __init__(self, fuente, url_base):
-        self.carpeta = CARPETA_RAW / fuente
-        self.carpeta.mkdir(parents=True, exist_ok=True)
+        self.destino = CARPETA_RAW / fuente
+        self.carpeta = CARPETA_RAW / f"{fuente}_descarga"
+        shutil.rmtree(self.carpeta, ignore_errors=True)  # restos de una descarga interrumpida
+        self.carpeta.mkdir(parents=True)
         self.sesion = requests.Session()
         self.sesion.headers.update({"User-Agent": USER_AGENT})
         self.robots = RobotFileParser()
@@ -106,11 +181,10 @@ class Descargador:
         time.sleep(PAUSA_SEGUNDOS)
         respuesta = self.sesion.get(url, timeout=60)
         es_pdf = url.lower().endswith(".pdf")
-        archivo = self.carpeta / (f"{len(self.manifiesto):04d}_{tipo_pagina}" + (".pdf" if es_pdf else (".json" if url.endswith(".json") or "api" in url else ".html.gz")))
+        # Los catálogos JSON de Uniandes no pasan por aquí (se guardan en descargar_uniandes).
+        archivo = self.carpeta / (f"{len(self.manifiesto):04d}_{tipo_pagina}" + (".pdf" if es_pdf else ".html.gz"))
         if es_pdf:
             archivo.write_bytes(respuesta.content)
-        elif archivo.suffix == ".json":
-            archivo.write_text(respuesta.text, encoding="utf-8")
         else:
             with gzip.open(archivo, "wt", encoding="utf-8") as salida:
                 salida.write(respuesta.text)
@@ -119,13 +193,11 @@ class Descargador:
         return respuesta.content if es_pdf else respuesta.text
 
     def guardar_manifiesto(self):
-        """Borra archivos de una descarga anterior que ya no están en el manifiesto y guarda el nuevo."""
-        vigentes = {fila["archivo"] for fila in self.manifiesto} | {"manifiesto.csv"}
-        for archivo in self.carpeta.iterdir():
-            if archivo.name not in vigentes:
-                archivo.unlink()
+        """Guarda el manifiesto y reemplaza la caché anterior de la fuente por la descarga nueva."""
         pd.DataFrame(self.manifiesto).to_csv(self.carpeta / "manifiesto.csv", index=False)
-        print(f"  {len(self.manifiesto)} archivos guardados en {self.carpeta}")
+        shutil.rmtree(self.destino, ignore_errors=True)
+        self.carpeta.rename(self.destino)
+        print(f"  {len(self.manifiesto)} archivos guardados en {self.destino.as_posix()}")
 
 
 def leer_manifiesto(fuente):
@@ -177,83 +249,102 @@ def extraer_fechas_uniandes(texto_raw):
     return float("nan"), float("nan")
 
 
+def _guardar_catalogo_uniandes(descargador, tipo_pagina, ruta_api, clave):
+    """Descarga un catálogo JSON del segmentador y lo guarda en la carpeta de la descarga.
+
+    Si el servidor no lo entrega (por ejemplo, HTTP 500 "Error durante la autenticación"), se reutiliza
+    el último catálogo bueno de la caché, con su fecha original, para no reemplazarlo por un error.
+    Devuelve el JSON guardado."""
+    time.sleep(PAUSA_SEGUNDOS)
+    respuesta = descargador.sesion.get(f"{UNIANDES_API_BASE}/{ruta_api}", headers=UNIANDES_API_HEADERS, timeout=30)
+    archivo = descargador.carpeta / f"{len(descargador.manifiesto):04d}_{tipo_pagina}.json"
+    if respuesta.status_code == 200 and clave in respuesta.text:
+        archivo.write_text(respuesta.text, encoding="utf-8")
+        descargador.manifiesto.append({"tipo_pagina": tipo_pagina, "url": respuesta.url, "archivo": archivo.name,
+                                       "codigo_http": respuesta.status_code, "fecha_extraccion": descargador.fecha})
+        return json.loads(respuesta.text)
+
+    anterior = pd.read_csv(descargador.destino / "manifiesto.csv") if (descargador.destino / "manifiesto.csv").exists() else None
+    fila = None if anterior is None else anterior[(anterior["tipo_pagina"] == tipo_pagina) & (anterior["codigo_http"] == 200)]
+    if fila is None or fila.empty:
+        raise RuntimeError(f"Uniandes: el catálogo {ruta_api} respondió HTTP {respuesta.status_code} y no hay uno anterior.")
+    fila = fila.iloc[0].to_dict()
+    shutil.copy(descargador.destino / fila["archivo"], archivo)
+    descargador.manifiesto.append({**fila, "archivo": archivo.name})
+    print(f"  Catálogo {ruta_api} no disponible (HTTP {respuesta.status_code}); se reutiliza el del {fila['fecha_extraccion']}.")
+    return leer_json_ruta(archivo)
+
+
+def leer_json_ruta(ruta):
+    """Devuelve el JSON guardado en una ruta."""
+    with open(ruta, encoding="utf-8") as entrada:
+        return json.load(entrada)
+
+
 def descargar_uniandes():
-    """Descarga los datos de la API de apoyos y programas del segmentador de Uniandes,
-    y luego descarga la ficha HTML de cada apoyo individual respetando robots.txt y pausas."""
-    import json
+    """Descarga los catálogos de apoyos y programas del segmentador de Uniandes y la ficha HTML de cada
+    apoyo (respetando robots.txt y con pausas). Si un catálogo no está disponible, se reutiliza el último
+    bueno y se vuelven a bajar las fichas que lista, que son páginas públicas."""
     print("Uniandes: descargando catálogo desde la API y fichas de apoyos...")
     descargador = Descargador("uniandes", UNIANDES_BASE)
+    apoyos = _guardar_catalogo_uniandes(descargador, "api_supports", "supports", '"supports"')
+    _guardar_catalogo_uniandes(descargador, "api_programs", "programs", '"programs"')
 
-    # 1. Descargar catálogo de apoyos desde el backend del segmentador
-    time.sleep(PAUSA_SEGUNDOS)
-    resp_supports = descargador.sesion.get(
-        f"{UNIANDES_API_BASE}/supports",
-        headers=UNIANDES_API_HEADERS,
-        timeout=30
-    )
-    archivo_supports = descargador.carpeta / f"{len(descargador.manifiesto):04d}_api_supports.json"
-    archivo_supports.write_text(resp_supports.text, encoding="utf-8")
-    descargador.manifiesto.append({
-        "tipo_pagina": "api_supports",
-        "url": f"{UNIANDES_API_BASE}/supports",
-        "archivo": archivo_supports.name,
-        "codigo_http": resp_supports.status_code,
-        "fecha_extraccion": descargador.fecha
-    })
-
-    # 2. Descargar catálogo de programas
-    time.sleep(PAUSA_SEGUNDOS)
-    resp_programs = descargador.sesion.get(
-        f"{UNIANDES_API_BASE}/programs",
-        headers=UNIANDES_API_HEADERS,
-        timeout=30
-    )
-    archivo_programs = descargador.carpeta / f"{len(descargador.manifiesto):04d}_api_programs.json"
-    archivo_programs.write_text(resp_programs.text, encoding="utf-8")
-    descargador.manifiesto.append({
-        "tipo_pagina": "api_programs",
-        "url": f"{UNIANDES_API_BASE}/programs",
-        "archivo": archivo_programs.name,
-        "codigo_http": resp_programs.status_code,
-        "fecha_extraccion": descargador.fecha
-    })
-
-    # 3. Descargar la ficha HTML de cada apoyo
-    data_supports = resp_supports.json() if resp_supports.status_code == 200 else {}
-    lista_apoyos = data_supports.get("supports", [])
     urls_visitadas = set()
-    for apoyo in lista_apoyos:
+    for apoyo in apoyos.get("supports", []):
         url = apoyo.get("url")
         if url and url not in urls_visitadas:
             urls_visitadas.add(url)
             descargador.obtener(url, "ficha")
-
     descargador.guardar_manifiesto()
+
+
+def leer_json(fuente, archivo):
+    """Devuelve el JSON guardado en data/raw/<fuente>/<archivo>."""
+    return leer_json_ruta(CARPETA_RAW / fuente / archivo)
+
+
+def catalogo_programas_uniandes():
+    """Programas de Uniandes con su facultad y nivel, tal como los publica el catálogo (api_programs)."""
+    manifiesto = leer_manifiesto("uniandes")
+    catalogo = leer_json("uniandes", manifiesto.loc[manifiesto["tipo_pagina"] == "api_programs", "archivo"].iloc[0])
+    filas = [{"facultad": f["nombre_facultad"], "programa": p["nombre_programa"],
+              "nivel": NIVEL_UNIANDES.get(p["nivel_academico"], p["nivel_academico"])}
+             for f in catalogo["programs"] for p in f["programas"]]
+    return pd.DataFrame(filas).drop_duplicates("programa")
 
 
 def leer_uniandes():
     """Lee el catálogo de apoyos de Uniandes (guardado en raw) y complementa con las fechas
     de convocatoria extraídas del HTML de la ficha correspondiente.
+
+    Nivel de formación, instrumento, facultades y programas vienen del catálogo; los códigos de
+    facultad y de programa se traducen a nombres con el catálogo de programas (api_programs).
     Devuelve un DataFrame alineado con el esquema común."""
-    import json
     manifiesto = leer_manifiesto("uniandes")
     fila_supports = manifiesto[manifiesto["tipo_pagina"] == "api_supports"]
     if fila_supports.empty:
         raise FileNotFoundError("No se encontró el archivo api_supports en data/raw/uniandes/manifiesto.csv")
+    data = leer_json("uniandes", fila_supports.iloc[0]["archivo"])
 
-    archivo_supports = CARPETA_RAW / "uniandes" / fila_supports.iloc[0]["archivo"]
-    with open(archivo_supports, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    # Nombres de facultades y programas a partir de sus códigos.
+    catalogo = leer_json("uniandes", manifiesto.loc[manifiesto["tipo_pagina"] == "api_programs", "archivo"].iloc[0])
+    nombre_facultad = {f["cod_facultad"]: f["nombre_facultad"] for f in catalogo["programs"]}
+    nombre_programa = {p["cod_programa"]: p["nombre_programa"] for f in catalogo["programs"] for p in f["programas"]}
 
     fichas_html = dict(zip(
         manifiesto.loc[manifiesto["tipo_pagina"] == "ficha", "url"],
         manifiesto.loc[manifiesto["tipo_pagina"] == "ficha", "archivo"]
     ))
 
+    # Fecha de extracción de cada apoyo: la de su ficha (de ahí salen las fechas de la convocatoria);
+    # si no tiene ficha, la del catálogo. Así el estado se calcula contra el día en que se leyó la ficha.
+    fecha_ficha = dict(zip(manifiesto.loc[manifiesto["tipo_pagina"] == "ficha", "url"],
+                           manifiesto.loc[manifiesto["tipo_pagina"] == "ficha", "fecha_extraccion"]))
     filas = []
-    fecha_ext = fila_supports.iloc[0]["fecha_extraccion"]
     for apoyo in data.get("supports", []):
         url = apoyo.get("url", "")
+        fecha_ext = fecha_ficha.get(url, fila_supports.iloc[0]["fecha_extraccion"])
         apertura, cierre = float("nan"), float("nan")
         archivo_html = fichas_html.get(url)
 
@@ -265,27 +356,37 @@ def leer_uniandes():
             texto_fechas = bloque_fechas.get_text(" ").strip() if bloque_fechas else ""
             apertura, cierre = extraer_fechas_uniandes(texto_fechas)
 
-        nombre = limpiar_texto(apoyo.get("nombreDelApoyo"))
-        tipo = clasificar_tipo(f"{apoyo.get('tipoDeApoyo', '')} {nombre} {url}")
-        cobertura = limpiar_texto(apoyo.get("cubre"))
-        requisitos = limpiar_texto(apoyo.get("dirigidoA"))
+        niveles = [NIVEL_UNIANDES.get(n, n) for n in apoyo.get("nivelAcadémico") or []]
+        programas = sorted({nombre_programa.get(c, c) for c in apoyo.get("programas") or []})
+        facultades = sorted(nombre_facultad.get(c, c) for c in apoyo.get("facultades") or [])
+        tipo_apoyo = apoyo.get("tipoDeApoyo")
+        porcentaje_min, porcentaje_max, forma_porcentaje = extraer_porcentaje_matricula(apoyo.get("cubre"))
 
         filas.append({
-            "nombre": nombre,
+            "nombre": limpiar_texto(apoyo.get("nombreDelApoyo")),
             "entidad": "Universidad de los Andes",
-            "tipo": tipo,
-            "cobertura": cobertura,
-            "requisitos": requisitos,
+            "nivel_formacion": SEPARADOR.join(niveles) or float("nan"),
+            "instrumento": INSTRUMENTO_UNIANDES.get(tipo_apoyo, float("nan")),
+            "area": SEPARADOR.join(facultades) or float("nan"),
+            "programas": SEPARADOR.join(programas) or float("nan"),
+            "cobertura": limpiar_texto(apoyo.get("cubre")),
+            "requisitos": limpiar_texto(apoyo.get("dirigidoA")),
             "fecha_apertura": apertura,
             "fecha_cierre": cierre,
             "enlace": url,
             "fuente_url": "https://apoyofinanciero.uniandes.edu.co/explora-apoyos-financieros",
             "fecha_extraccion": fecha_ext,
+            "porcentaje_min": porcentaje_min,
+            "porcentaje_max": porcentaje_max,
+            "forma_porcentaje": forma_porcentaje,
+            "n_programas": len(programas),
+            "instrumento_publicado": tipo_apoyo,
+            "origen_clasificacion": "catálogo de la entidad",
             "requisitos_origen": "api",
         })
 
     print(f"Uniandes: {len(filas)} apoyos procesados desde el segmentador y fichas web")
-    return pd.DataFrame(filas).reindex(columns=ESQUEMA + COLUMNAS_EXTRA), []
+    return pd.DataFrame(filas).reindex(columns=ESQUEMA + COLUMNAS_EXTRA)
 
 
 # --------------------------------------------------------------------------------------
@@ -405,10 +506,18 @@ def leer_atenea():
                         origen = "pdf"
                         break
 
+        # Nivel, instrumento y área (inferidos): reglas sobre el nombre y el inicio de la descripción.
+        # "beca-crédito" (FEST) es un crédito, no una beca.
+        texto_reglas = re.sub(r"beca-cr[eé]dito", "crédito", f"{nombre}. {str(cobertura)[:CARACTERES_REGLAS]}",
+                              flags=re.IGNORECASE)
+        porcentaje_min, porcentaje_max, forma_porcentaje = extraer_porcentaje_matricula(texto_reglas)
+
         filas.append({
             "nombre": nombre,
             "entidad": "Agencia Atenea",
-            "tipo": clasificar_tipo(f"{nombre} {cobertura}"),
+            "nivel_formacion": clasificar_por_reglas(texto_reglas, NIVELES_ATENEA),
+            "instrumento": clasificar_por_reglas(texto_reglas, INSTRUMENTOS_ATENEA),
+            "area": clasificar_por_reglas(texto_reglas, AREAS_ATENEA),
             "cobertura": cobertura,
             "requisitos": requisitos,
             "fecha_apertura": fechas[0] if len(fechas) >= 1 else float("nan"),
@@ -416,84 +525,14 @@ def leer_atenea():
             "enlace": detalle["url"],
             "fuente_url": ATENEA_BASE + "/convocatorias",
             "fecha_extraccion": detalle["fecha_extraccion"],
+            "porcentaje_min": porcentaje_min,
+            "porcentaje_max": porcentaje_max,
+            "forma_porcentaje": forma_porcentaje,
+            "origen_clasificacion": "reglas de texto (inferido)",
             "requisitos_origen": origen,
             "estado_publicado": estado_publicado.get(detalle["url"], float("nan")),
         })
     print(f"Atenea: {len(filas)} convocatorias")
-    return pd.DataFrame(filas).reindex(columns=ESQUEMA + COLUMNAS_EXTRA)
-
-
-# --------------------------------------------------------------------------------------
-# SENA Betowa
-# --------------------------------------------------------------------------------------
-def url_listado_betowa(pagina):
-    """URL del listado de Betowa filtrado a Bogotá, con 100 programas por página."""
-    return f"{BETOWA_BASE}/oferta?location={BETOWA_BOGOTA}&page_size=100&page={pagina}"
-
-
-def descargar_betowa():
-    """Baja las páginas del listado filtrado a Bogotá y el detalle de cada programa."""
-    print("Betowa: descargando...")
-    descargador = Descargador("betowa", BETOWA_BASE)
-    primera = descargador.obtener(url_listado_betowa(1), "listado")
-    total_paginas = int(re.search(r"página \d+ de (\d+)", primera).group(1))
-    listados = [primera] + [descargador.obtener(url_listado_betowa(p), "listado")
-                            for p in range(2, total_paginas + 1)]
-
-    programas = []
-    for html in listados:
-        for a in BeautifulSoup(html, "html.parser").find_all("a", href=True):
-            url = urljoin(BETOWA_BASE, a["href"])
-            if "programId=" in url and url not in programas:
-                programas.append(url)
-    print(f"  {len(programas)} programas en {total_paginas} páginas del listado")
-    for url in programas:
-        descargador.obtener(url, "detalle")
-    descargador.guardar_manifiesto()
-
-
-def leer_betowa():
-    """Lee el detalle de cada programa ofrecido en Bogotá; una fila por programa y modalidad.
-
-    Betowa no publica fecha de apertura ni de cierre de inscripciones: esas columnas quedan en NaN
-    y se guardan aparte los períodos académicos de los cursos (cuando el curso los publica).
-    """
-    manifiesto = leer_manifiesto("betowa")
-    filas = []
-    for _, detalle in manifiesto[manifiesto["tipo_pagina"] == "detalle"].iterrows():
-        soup = BeautifulSoup(leer_html("betowa", detalle["archivo"]), "html.parser")
-        for etiqueta in soup(["script", "style", "noscript", "header", "footer", "nav"]):
-            etiqueta.decompose()
-        texto = limpiar_texto(soup.body.get_text(" "))
-        # Datos de la ficha: van entre etiquetas fijas ("Tipo de programa ... Duración ...").
-        tipo_programa = re.search(r"Tipo de programa (.+?) Duración", texto)
-        duracion = re.search(r"Duración (.+?) Nivel de formación", texto)
-        nivel = re.search(r"Nivel de formación (.+?) (\d+) \+ Edad mínima", texto)
-        bloque_requisitos = re.search(r"Requisitos para inscribirte en este programa (.+?) Proceso de admisión", texto)
-        requisitos = bloque_requisitos.group(1) if bloque_requisitos else ""
-        requisitos = re.sub(r"^Antes de comenzar, asegúrate de cumplir con los siguientes requisitos\..*?programa:\s*",
-                            "", requisitos)
-        if nivel:
-            requisitos = f"Edad mínima: {nivel.group(2)} años. {requisitos}"
-        periodos = re.findall(r"Período académico\s*:\s*desde el (.+?\d{4}) hasta el (.+?\d{4})", texto)
-
-        filas.append({
-            "nombre": limpiar_texto(soup.find("h1").get_text(" ")),
-            "entidad": "SENA",
-            "tipo": "formación gratuita",
-            "cobertura": limpiar_texto(
-                "Formación gratuita del SENA. "
-                + ", ".join(m.group(1) for m in [tipo_programa, nivel, duracion] if m)),
-            "requisitos": limpiar_texto(requisitos),
-            "fecha_apertura": float("nan"),
-            "fecha_cierre": float("nan"),
-            "enlace": detalle["url"],
-            "fuente_url": url_listado_betowa(1),
-            "fecha_extraccion": detalle["fecha_extraccion"],
-            "requisitos_origen": "html" if bloque_requisitos else float("nan"),
-            "periodos_cursos": "; ".join(f"desde {a} hasta {b}" for a, b in periodos) or float("nan"),
-        })
-    print(f"Betowa: {len(filas)} programas en Bogotá")
     return pd.DataFrame(filas).reindex(columns=ESQUEMA + COLUMNAS_EXTRA)
 
 
@@ -538,13 +577,6 @@ def texto_a_fecha(texto):
     return pd.NaT
 
 
-def fin_ultimo_periodo(periodos):
-    """Última fecha 'hasta el ...' de los períodos académicos de un programa del SENA (o NaT)."""
-    if not isinstance(periodos, str):
-        return pd.NaT
-    return max(texto_a_fecha(fin) for fin in re.findall(r"hasta (.+?\d{4})", periodos))
-
-
 def dirigido_a_personas(nombre, cobertura):
     """False si la convocatoria financia proyectos, empresas o prácticas (reglas PATRON_NO_ESTUDIANTES*)."""
     return not (re.search(PATRON_NO_ESTUDIANTES, f"{nombre} {cobertura}", flags=re.IGNORECASE)
@@ -556,8 +588,7 @@ def calcular_estado(fila):
 
     1. Con fecha de cierre: 'próxima' si aún no abre; 'abierta' si cierra hoy o después; si no, 'cerrada'.
     2. Sin fecha de cierre, si la entidad publica un estado (Atenea), se usa ese estado.
-    3. SENA: si el período académico de todos sus cursos ya terminó, 'cerrada' (inferido).
-    4. En otro caso, 'sin fecha'.
+    3. En otro caso, 'sin fecha'.
     """
     hoy = fila["fecha_extraccion"]
     if pd.notna(fila["fecha_cierre"]):
@@ -572,8 +603,6 @@ def calcular_estado(fila):
             return "abierta", "estado publicado por la entidad"
         if publicado.startswith("Apertura"):
             return "próxima", "estado publicado por la entidad"
-    if pd.notna(fila["fin_periodo"]) and fila["fin_periodo"] < hoy:
-        return "cerrada", "período académico terminado (inferido)"
     return "sin fecha", "sin fecha de cierre publicada"
 
 
@@ -584,10 +613,24 @@ def validar_enlaces(enlaces, actualizar, ruta_cache=Path("results/validacion_enl
     """Código HTTP de cada enlace.
 
     Si actualizar es True, visita cada enlace (respetando robots.txt y con pausas) y guarda el
-    resultado en ruta_cache. Si es False, lee el resultado guardado (así el tutorial corre sin internet).
+    resultado en ruta_cache. Si es False, lee el resultado guardado (así el tutorial corre sin internet)
+    y solo visita los enlaces que aún no estén en él; un enlace sin validar nunca se da por no válido.
     """
-    if not actualizar:
-        return pd.read_csv(ruta_cache)
+    if actualizar:
+        validacion = _visitar_enlaces(enlaces)
+    else:
+        guardada = pd.read_csv(ruta_cache)
+        faltantes = [e for e in pd.unique(pd.Series(enlaces)) if e not in set(guardada["enlace"])]
+        if not faltantes:
+            return guardada
+        print(f"Validando {len(faltantes)} enlaces que no están en {ruta_cache.as_posix()}...")
+        validacion = pd.concat([guardada, _visitar_enlaces(faltantes)], ignore_index=True)
+    validacion.to_csv(ruta_cache, index=False)
+    return validacion
+
+
+def _visitar_enlaces(enlaces):
+    """Visita cada enlace (respetando robots.txt y con pausas) y devuelve su código HTTP."""
     sesion = requests.Session()
     sesion.headers.update({"User-Agent": USER_AGENT})
     robots_por_sitio, filas = {}, []
@@ -608,6 +651,103 @@ def validar_enlaces(enlaces, actualizar, ruta_cache=Path("results/validacion_enl
             error = "bloqueado por robots.txt"
         filas.append({"enlace": enlace, "codigo_http": codigo, "error": error,
                       "fecha_validacion": date.today().isoformat()})
-    validacion = pd.DataFrame(filas)
-    validacion.to_csv(ruta_cache, index=False)
-    return validacion
+    return pd.DataFrame(filas)
+
+
+# --------------------------------------------------------------------------------------
+# Tabla final
+# --------------------------------------------------------------------------------------
+# Líneas de apoyo de Atenea (inferido): cada convocatoria es una edición de una línea que se repite.
+# Se asignan por el nombre, en este orden (gana la primera regla que coincide). Las convocatorias de
+# "Jóvenes a la E" sin subtítulo (primera, segunda y tercera) se asignan a la línea de instituciones
+# privadas, porque la cuarta, la quinta y la sexta siguen esa numeración. La "línea de fortalecimiento
+# ... en instituciones oficiales" es la línea de instituciones públicas.
+LINEAS_ATENEA = {
+    "Talento Capital": r"talento capital",
+    "Todos a la U": r"todos a la u\b",
+    "Jóvenes a la U": r"j[oó]venes a la u\b",
+    "Jóvenes a la E: talentos excepcionales": r"talentos excepcionales",
+    "Jóvenes a la E: formación para el trabajo": r"j[oó]venes a la e.*formaci[oó]n para el trabajo",
+    "Jóvenes a la E: instituciones públicas": r"j[oó]venes a la e.*p[uú]blica|instituciones oficiales",
+    "Jóvenes a la E: instituciones privadas": r"j[oó]venes a la e\b",
+    "Fondo Técnica y Tecnológica": r"t[eé]cnica y tecnol[oó]gica",
+    "Fondo Alianza Ciudad Educadora": r"alianza",
+    "FEST (crédito con pago contingente)": r"\bfest\b",
+    "Fondo para Víctimas del Conflicto": r"v[ií]ctimas",
+}
+
+
+def linea_atenea(nombre):
+    """Línea de apoyo de una convocatoria de Atenea (inferido). Si ninguna regla coincide, es una
+    convocatoria única y su línea es su propio nombre."""
+    for linea, patron in LINEAS_ATENEA.items():
+        if re.search(patron, nombre, flags=re.IGNORECASE):
+            return linea
+    return nombre
+
+
+def unir_categorias(columna, orden=()):
+    """Une las categorías de varios registros sin repetir, en el orden dado (NaN si ninguno tiene dato)."""
+    valores = set(columna.dropna().str.split(SEPARADOR).explode())
+    ordenados = [v for v in orden if v in valores] + sorted(valores - set(orden))
+    return SEPARADOR.join(ordenados) if ordenados else float("nan")
+
+
+def situacion_linea(entidad, ediciones):
+    """Situación de una línea de apoyo en la fecha de la foto, según sus ediciones (inferido en Atenea).
+    Una línea de Atenea sin convocatorias en los 12 meses anteriores a la foto se marca como posiblemente
+    terminada; los apoyos de Uniandes son permanentes mientras sigan en el catálogo."""
+    if ediciones["estado"].isin(["abierta", "próxima"]).any():
+        return "abierta o próxima en la foto"
+    if entidad == "Universidad de los Andes":
+        return "en el catálogo, sin convocatoria abierta"
+    ultima = ediciones["fecha_apertura"].max()
+    if pd.isna(ultima):
+        return "sin fecha publicada"
+    if ultima >= ediciones["fecha_extraccion"].max() - pd.DateOffset(months=12):
+        return "abrió en los últimos 12 meses"
+    return f"sin convocatorias desde {ultima.year} (posiblemente terminada)"
+
+
+def ficha_por_linea(base, orden_nivel=(), orden_instrumento=()):
+    """Una fila por línea de apoyo: en Atenea reúne todas las ediciones (convocatorias) de la línea; en
+    Uniandes cada apoyo del catálogo es su propia línea. El enlace es el de la edición más reciente."""
+    es_uniandes = base["entidad"] == "Universidad de los Andes"
+    base = base.assign(linea=base["nombre"].where(es_uniandes, base["nombre"].map(linea_atenea)),
+                       # En Uniandes se agrupa por enlace: dos apoyos distintos pueden tener el mismo nombre.
+                       clave=base["enlace"].where(es_uniandes, base["nombre"].map(linea_atenea)))
+    filas = []
+    for (entidad, _), ediciones in base.sort_values("fecha_apertura").groupby(["entidad", "clave"]):
+        linea = ediciones["linea"].iloc[0]
+        filas.append({
+            "entidad": entidad,
+            "linea": linea,
+            "ediciones": len(ediciones),
+            "nivel_formacion": unir_categorias(ediciones["nivel_formacion"], orden_nivel),
+            "instrumento": unir_categorias(ediciones["instrumento"], orden_instrumento),
+            "area": unir_categorias(ediciones["area"]),
+            "porcentaje_max": ediciones["porcentaje_max"].max(),
+            "primera_apertura": ediciones["fecha_apertura"].min(),
+            "ultima_apertura": ediciones["fecha_apertura"].max(),
+            "situacion": situacion_linea(entidad, ediciones),
+            "enlace": ediciones["enlace"].iloc[-1],
+        })
+    return pd.DataFrame(filas)
+
+
+COLUMNAS_FINALES = ESQUEMA +["estado", "criterio_estado", "enlace_valido", "codigo_http", "fecha_validacion",
+                              "alertas", "dias_ventana"] + COLUMNAS_EXTRA
+
+
+def alertas_de(fila):
+    """Lista de problemas de calidad de un registro (NaN si no tiene ninguno)."""
+    alertas = []
+    if pd.isna(fila["requisitos"]):
+        alertas.append("sin requisitos")
+    if pd.isna(fila["fecha_cierre"]):
+        alertas.append("sin fecha de cierre")
+    if not fila["enlace_valido"]:
+        alertas.append("enlace no válido")
+    if fila["dias_ventana"] < 0:
+        alertas.append("cierre antes de apertura")
+    return "; ".join(alertas) or float("nan")

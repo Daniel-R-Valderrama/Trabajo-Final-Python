@@ -4,18 +4,18 @@ Trabajo final del Taller de Python (Facultad de Economía, Universidad de los An
 
 **Integrantes:** Daniel Eduardo Ramírez Hoyos (202626865) y Daniel Ricardo Valderrama Celis (20213250).
 
-**Pregunta:** ¿Cómo se comparan las becas y apoyos educativos publicados por la Universidad de los Andes, la Agencia Atenea y el SENA, a la fecha de extracción, en cobertura, requisitos y vigencia de sus convocatorias?
+**Pregunta:** ¿En qué niveles de formación, instrumentos financieros y programas o áreas se concentran las becas y apoyos educativos publicados por la Agencia Atenea y la Universidad de los Andes a noviembre de 2026?
 
 ## Estructura
 
 | Ruta | Contenido |
 |---|---|
 | `tutorial.ipynb` | **Entregable.** Tutorial completo: fuentes, extracción, limpieza, análisis, app, limitaciones y conclusiones. |
-| `app.py` | App de Streamlit; lee `results/becas_apoyos.csv`. |
-| `utils/scrapers.py` | Funciones auxiliares: extracción, limpieza de fechas, estado y validación de enlaces. |
+| `app.py` | App de Streamlit; muestra la tabla del tutorial (`results/becas_apoyos.csv`) y oculta las convocatorias vencidas. |
+| `utils/scrapers.py` | Funciones auxiliares: extracción, reglas de clasificación de Atenea, limpieza de fechas, estado, validación de enlaces y ficha por línea de apoyo. |
 | `scripts/` | Scripts de desarrollo numerados (`01_` a `04_`), con celdas `# %%`. El tutorial reúne su contenido. |
-| `data/raw/` | Copias crudas (HTML comprimido y PDF) del 2026-11-18, con un `manifiesto.csv` por fuente. |
-| `data/README.md` | Descripción de cada fuente, del esquema y de las decisiones de limpieza. |
+| `data/raw/` | Copias crudas (HTML comprimido, PDF y JSON) del 2026-11-18 (Atenea) y del 2026-11-22 (Uniandes), con un `manifiesto.csv` por fuente. |
+| `data/README.md` | Descripción de cada fuente, del esquema y de las decisiones de limpieza y clasificación. |
 | `results/` | Tablas generadas. |
 | `figures/` | Gráficos generados. |
 | `requirements.txt` | Paquetes con versiones fijas. |
@@ -42,7 +42,7 @@ También se puede descargar como .zip desde el botón *Code → Download ZIP* de
 .venv\Scripts\jupyter.exe notebook tutorial.ipynb
 ```
 
-En Jupyter: *Kernel → Restart Kernel and Run All Cells*. Con `ACTUALIZAR_DATOS = False` (valor por defecto), todo se lee de `data/raw/` y `results/`, sin internet; tarda menos de un minuto. Con `True` vuelve a raspar las fuentes y a validar los enlaces (unos 25 minutos), y sobrescribe las copias.
+En Jupyter: *Kernel → Restart Kernel and Run All Cells*. Con `ACTUALIZAR_DATOS = False` (valor por defecto), todo se lee de `data/raw/` y `results/`, sin internet; tarda menos de un minuto. Con `True` vuelve a raspar las dos fuentes y a validar los enlaces (unos 10 minutos), y sobrescribe las copias.
 
 Para ejecutarlo de principio a fin sin abrir Jupyter:
 
@@ -52,13 +52,15 @@ Para ejecutarlo de principio a fin sin abrir Jupyter:
 
 ### App de Streamlit
 
-La app solo lee `results/becas_apoyos.csv`, sin internet y sin raspar nada:
-
 ```powershell
 .venv\Scripts\streamlit.exe run app.py
 ```
 
-Se abre en http://localhost:8501. Tiene un buscador por texto (no distingue tildes ni mayúsculas) y filtros por entidad, tipo y estado. "Solo abiertas" viene activado por defecto. Se cierra con Ctrl+C en la terminal.
+Se abre en http://localhost:8501 y se cierra con Ctrl+C en la terminal.
+
+- Muestra exactamente la tabla que deja el tutorial (`results/becas_apoyos.csv`); no raspa nada ni necesita internet.
+- **Datos más recientes:** en el tutorial se pone `ACTUALIZAR_DATOS = True`, se da *Run All* (unos 10 minutos, con internet) y se vuelve a cargar la app.
+- No muestra las convocatorias vencidas. Tiene un buscador por texto (no distingue tildes ni mayúsculas) y filtros por entidad, nivel de formación, instrumento financiero, facultad o área, porcentaje mínimo de la matrícula y estado (por defecto, abiertas y próximas).
 
 ## Contenido del .zip
 
@@ -68,11 +70,12 @@ Se comprime la carpeta del proyecto **sin** `.venv/`, `__pycache__/` ni `.ipynb_
 
 | Archivo | Lo genera | Insumo |
 |---|---|---|
-| `results/reconocimiento_fuentes.csv` | `scripts/01_reconocimiento_fuentes.py` | Consulta en línea a las páginas de Uniandes, Atenea, SICORE y Betowa (2026-11-18) |
-| `data/raw/<fuente>/` (HTML, PDF y `manifiesto.csv`) | `tutorial.ipynb` o `scripts/02_extraccion.py` con `ACTUALIZAR_DATOS = True` (funciones `descargar_*`) | Páginas en línea de Uniandes, Atenea y Betowa (2026-11-18) |
+| `results/reconocimiento_fuentes.csv` | `scripts/01_reconocimiento_fuentes.py` | Consulta en línea a las páginas de Uniandes, Atenea, SICORE y Betowa (2026-11-18). El SENA (Betowa) se revisó, pero quedó fuera de la pregunta. |
+| `data/raw/<fuente>/` (HTML, PDF, JSON y `manifiesto.csv`) | `tutorial.ipynb` o `scripts/02_extraccion.py` con `ACTUALIZAR_DATOS = True` (funciones `descargar_*`) | Páginas en línea de Atenea (2026-11-18) y catálogo JSON y fichas de Uniandes (2026-11-22) |
 | `results/extraccion_sin_limpiar.csv` | `tutorial.ipynb` (sección 3) o `scripts/02_extraccion.py` | `data/raw/` |
-| `results/validacion_enlaces.csv` | `tutorial.ipynb` o `scripts/03_limpieza_validacion.py` con `ACTUALIZAR_DATOS = True` (función `validar_enlaces`) | Enlaces de la extracción visitados en línea (2026-11-18) |
+| `results/validacion_enlaces.csv` | `tutorial.ipynb` o `scripts/03_limpieza_validacion.py` (función `validar_enlaces`; con `ACTUALIZAR_DATOS = False` solo visita los enlaces que falten) | Enlaces de la extracción visitados en línea (2026-11-18; los nuevos de Uniandes, 2026-11-26) |
 | `results/becas_apoyos.csv` | `tutorial.ipynb` (sección 4) o `scripts/03_limpieza_validacion.py` | `results/extraccion_sin_limpiar.csv` y `results/validacion_enlaces.csv` |
-| `results/tabla_vigencia.csv`, `results/tabla_convocatorias_vigentes.csv`, `results/tabla_cobertura.csv`, `results/tabla_requisitos.csv` | `tutorial.ipynb` (sección 5) o `scripts/04_analisis.py` | `results/becas_apoyos.csv` |
-| `figures/estado_por_entidad.png`, `figures/dias_para_cierre.png`, `figures/cobertura_por_entidad.png`, `figures/requisitos_por_entidad.png` (cada una lo indica en su pie) | `tutorial.ipynb` (sección 5) o `scripts/04_analisis.py` | `results/becas_apoyos.csv` |
+| `results/tabla_nivel.csv`, `results/tabla_instrumento.csv`, `results/tabla_porcentaje_matricula.csv`, `results/tabla_nivel_instrumento.csv`, `results/tabla_area.csv`, `results/tabla_alcance_programas.csv`, `results/tabla_apoyos_por_programa.csv` | `tutorial.ipynb` (sección 5) o `scripts/04_analisis.py` | `results/becas_apoyos.csv` (y el catálogo de programas de Uniandes en `data/raw/uniandes/`) |
+| `results/tabla_lineas_apoyo.csv`, `results/tabla_efecto_lineas.csv`, `results/guia_por_perfil.csv` | `tutorial.ipynb` (sección 8, mejora sugerida por la IA) o `scripts/04_analisis.py` | `results/becas_apoyos.csv` |
+| `figures/nivel_por_entidad.png`, `figures/instrumento_por_entidad.png`, `figures/porcentaje_matricula.png`, `figures/nivel_instrumento.png`, `figures/area_por_entidad.png` (cada una lo indica en su pie) | `tutorial.ipynb` (sección 5) o `scripts/04_analisis.py` | `results/becas_apoyos.csv` |
 | App web | `app.py` (Streamlit) | `results/becas_apoyos.csv` |
