@@ -1,9 +1,32 @@
 ﻿entidad,nombre,tipo,estado,fecha_apertura,fecha_cierre,dias_para_cierre,requisitos_origen,enlace
 Agencia Atenea,Convocatoria Jóvenes a la E 6 - Educación Superior en Instituciones Privadas,apoyo financiero,abierta,2026-11-12 17:00:00,2026-11-18 23:59:00,0,pdf,https://www.agenciaatenea.gov.co/convocatorias/convocatoria-jovenes-la-e-6-educacion-superior-en-instituciones-privadas
+Universidad de los Andes,Beca Avanza,beca,abierta,2026-10-05 00:00:00,2026-11-26 00:00:00,4,api,https://apoyofinanciero.uniandes.edu.co/beca-avanza
 Agencia Atenea,"Sexta convocatoria para aspirantes de la línea de fortalecimiento del acceso, la permanencia y la calidad en instituciones oficiales",apoyo financiero,abierta,2026-11-07 12:00:00,2026-11-22 23:59:00,4,pdf,https://www.agenciaatenea.gov.co/convocatorias/convocatoria-jovenes-la-e-6-educacion-superior-en-instituciones-publicas
 Agencia Atenea,TERCERA CONVOCATORIA PARA ASPIRANTES DE FEST ATENEA,beca,abierta,2026-11-17 17:00:00,2026-11-24 23:59:00,6,html,https://www.agenciaatenea.gov.co/convocatorias/tercera-convocatoria-para-aspirantes-de-fest-atenea
-Universidad de los Andes,Beca Avanza,beca,abierta,2026-10-05 00:00:00,2026-11-26 00:00:00,8,html,https://apoyofinanciero.uniandes.edu.co/beca-avanza
-Universidad de los Andes,Apoyo Financiero Maestrias Virtuales (Alianza Coursera),apoyo financiero,abierta,2026-09-15 00:00:00,2026-12-06 00:00:00,18,html,https://apoyofinanciero.uniandes.edu.co/apoyo-financiero-maestrias-virtuales-alianza-coursera
+Universidad de los Andes,Beca Geociencias Uniandes,beca,abierta,2026-08-24 00:00:00,2026-11-30 00:00:00,8,api,https://apoyofinanciero.uniandes.edu.co/beca-geociencias-uniandes
+Universidad de los Andes,Préstamo Mediano Plazo 2048,apoyo financiero,abierta,2026-10-19 00:00:00,2026-11-30 00:00:00,8,api,https://apoyofinanciero.uniandes.edu.co/prestamo-mediano-plazo-20482
+Universidad de los Andes,Préstamo Condonable Francisco Pizano de Brigard,beca,próxima,2026-11-26 00:00:00,2026-12-02 00:00:00,10,api,https://apoyofinanciero.uniandes.edu.co/beca-francisco-pizano-de-brigard
+Universidad de los Andes,Beca Impulso,beca,próxima,2026-11-25 00:00:00,2026-12-02 00:00:00,10,api,https://apoyofinanciero.uniandes.edu.co/beca-impulso
+Universidad de los Andes,Beca excelencia EPAH,beca,próxima,2026-11-25 00:00:00,2026-12-02 00:00:00,10,api,https://apoyofinanciero.uniandes.edu.co/beca-excelencia-epah
+Universidad de los Andes,Beca Seneca Alumni,beca,abierta,2026-11-20 00:00:00,2026-12-04 00:00:00,12,api,https://apoyofinanciero.uniandes.edu.co/component/content/article/beca-seneca?catid=2
+Universidad de los Andes,Becas Coursera para Maestrías Virtuales,beca,abierta,2026-09-15 00:00:00,2026-12-06 00:00:00,14,api,https://apoyofinanciero.uniandes.edu.co/apoyo-financiero-maestrias-virtuales-alianza-coursera
 Agencia Atenea,Convocatoria Jóvenes a la E: Formación para el Trabajo 5,apoyo financiero,próxima,2026-12-02 08:00:00,2026-12-09 21:00:00,21,,https://www.agenciaatenea.gov.co/convocatorias/convocatoria-jovenes-la-e-formacion-para-el-trabajo-5
-Agencia Atenea,Fondo Técnica y Tecnológica,apoyo financiero,próxima,2026-12-14 08:00:00,2027-01-15 21:00:00,58,,https://www.agenciaatenea.gov.co/convocatorias/fondo-tecnica-y-tecnologica
+Universidad de los Andes,Préstamo Uniandes CP,apoyo financiero,abierta,2026-08-14 00:00:00,2026-12-15 00:00:00,23,api,https://apoyofinanciero.uniandes.edu.co/progresandes-cp-75
+Universidad de los Andes,Descuento por Hermanos,apoyo financiero,abierta,2026-08-14 00:00:00,2026-12-15 00:00:00,23,api,https://apoyofinanciero.uniandes.edu.co/descuento-por-hermanos
+Universidad de los Andes,Beca Empresarial Fundación Mazda,beca,abierta,2026-08-24 00:00:00,2026-12-15 00:00:00,23,api,https://apoyofinanciero.uniandes.edu.co/beca-mazda
+Universidad de los Andes,Beca Decidí Enseñar,beca,abierta,2026-08-14 00:00:00,2026-12-15 00:00:00,23,api,https://apoyofinanciero.uniandes.edu.co/decidi-ensenar
+Universidad de los Andes,Beca Preferente,beca,abierta,2026-08-14 00:00:00,2026-12-15 00:00:00,23,api,https://apoyofinanciero.uniandes.edu.co/beca-preferente
+Universidad de los Andes,Préstamo Mediano Plazo 2048,apoyo financiero,abierta,2026-08-14 00:00:00,2026-12-15 00:00:00,23,api,https://apoyofinanciero.uniandes.edu.co/prestamo-mediano-plazo-2048
+Universidad de los Andes,Préstamo Mediano Plazo 2048 Atenea te Respalda,apoyo financiero,abierta,2026-09-16 00:00:00,2026-12-15 00:00:00,23,api,https://apoyofinanciero.uniandes.edu.co/component/content/article/prestamo-atenea-20248?catid=2
+Universidad de los Andes,Préstamo Progresandes Posgrado Corto Plazo,apoyo financiero,abierta,2026-11-13 00:00:00,2026-12-17 00:00:00,25,api,https://apoyofinanciero.uniandes.edu.co/progresandes-posgrado-cp
+Universidad de los Andes,Descuento para Egresados,apoyo financiero,abierta,2026-11-13 00:00:00,2026-12-17 00:00:00,25,api,https://apoyofinanciero.uniandes.edu.co/descuento-para-egresados
+Universidad de los Andes,Préstamos FEGVL CP y MP,apoyo financiero,abierta,2026-10-23 00:00:00,2026-12-19 00:00:00,27,api,https://apoyofinanciero.uniandes.edu.co/prestamo-fegvl-cp-y-mp
+Universidad de los Andes,Beca ICDT – IFA Uniandes Facultad de Derecho,beca,próxima,2026-12-12 00:00:00,2026-12-25 00:00:00,33,api,https://apoyofinanciero.uniandes.edu.co/component/content/article/beca-icdt-ifa-uniandes-facultad-de-derecho?catid=2
+Universidad de los Andes,Becas de Excelencia - Posgrado,beca,próxima,2026-12-09 00:00:00,2026-12-27 00:00:00,35,api,https://apoyofinanciero.uniandes.edu.co/beca-de-excelencia-posgrado
+Universidad de los Andes,Préstamo Condonable Apoyo Impacto País,apoyo financiero,próxima,2026-12-11 00:00:00,2026-12-27 00:00:00,35,api,https://apoyofinanciero.uniandes.edu.co/apoyo-impacto-pais
+Universidad de los Andes,Becas de Excelencia - Eduardo Álvarez Correa,beca,próxima,2026-12-09 00:00:00,2026-12-27 00:00:00,35,api,https://apoyofinanciero.uniandes.edu.co/beca-de-excelencia-eduardo-alvarez-correa
+Universidad de los Andes,Beca Fondo Vamos Juntos,beca,próxima,2026-12-09 00:00:00,2026-12-27 00:00:00,35,api,https://apoyofinanciero.uniandes.edu.co/fondo-vamos-juntos
+Universidad de los Andes,Beca CIFE-EGOB,beca,próxima,2026-12-09 00:00:00,2026-12-27 00:00:00,35,api,https://apoyofinanciero.uniandes.edu.co/beca-cife-egob
 Agencia Atenea,Fondo Alianza Ciudad Educadora,apoyo financiero,próxima,2026-12-14 08:00:00,2027-01-15 21:00:00,58,,https://www.agenciaatenea.gov.co/convocatorias/fondo-alianza-ciudad-educadora
+Agencia Atenea,Fondo Técnica y Tecnológica,apoyo financiero,próxima,2026-12-14 08:00:00,2027-01-15 21:00:00,58,,https://www.agenciaatenea.gov.co/convocatorias/fondo-tecnica-y-tecnologica
+Universidad de los Andes,Beca FEGVL Maestrías Virtuales,beca,próxima,2027-01-19 00:00:00,2027-02-12 00:00:00,82,api,https://apoyofinanciero.uniandes.edu.co/beca-fegvl-maestrias-virtuales

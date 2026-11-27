@@ -34,6 +34,14 @@ USER_AGENT = "Mozilla/5.0 (compatible; TallerPythonUniandes/1.0; proyecto academ
 PAUSA_SEGUNDOS = 2
 
 UNIANDES_BASE = "https://apoyofinanciero.uniandes.edu.co"
+UNIANDES_API_BASE = "https://segmentador.mundosoft.com.co/api/backend"
+UNIANDES_API_HEADERS = {
+    "accept": "application/json, text/plain, */*",
+    "referer": "https://segmentador.mundosoft.com.co/",
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36 Edg/158.0.0.0",
+    "x-auth-token": "MUzfpQwzzhWVGEG70oxpV4gokrSBaeNFs3PSi8La",
+    "x-connection-code": "19"
+}
 ATENEA_BASE = "https://www.agenciaatenea.gov.co"
 BETOWA_BASE = "https://betowa.sena.edu.co"
 # Código de ubicación de Bogotá en el filtro de Betowa (visto en la URL al filtrar por "Bogotá").
@@ -98,9 +106,11 @@ class Descargador:
         time.sleep(PAUSA_SEGUNDOS)
         respuesta = self.sesion.get(url, timeout=60)
         es_pdf = url.lower().endswith(".pdf")
-        archivo = self.carpeta / (f"{len(self.manifiesto):04d}_{tipo_pagina}" + (".pdf" if es_pdf else ".html.gz"))
+        archivo = self.carpeta / (f"{len(self.manifiesto):04d}_{tipo_pagina}" + (".pdf" if es_pdf else (".json" if url.endswith(".json") or "api" in url else ".html.gz")))
         if es_pdf:
             archivo.write_bytes(respuesta.content)
+        elif archivo.suffix == ".json":
+            archivo.write_text(respuesta.text, encoding="utf-8")
         else:
             with gzip.open(archivo, "wt", encoding="utf-8") as salida:
                 salida.write(respuesta.text)
@@ -132,51 +142,150 @@ def leer_html(fuente, archivo):
 # --------------------------------------------------------------------------------------
 # Universidad de los Andes
 # --------------------------------------------------------------------------------------
+def extraer_fechas_uniandes(texto_raw):
+    """Extrae fecha de apertura y cierre a partir del texto de la sección de fechas de Uniandes."""
+    if not texto_raw:
+        return float("nan"), float("nan")
+    texto = " ".join(str(texto_raw).replace("\xa0", " ").replace("​", "").split())
+    if any(p in texto.lower() for p in ["cerrada", "en definición", "fechas definidas", "enviará las fechas"]):
+        return float("nan"), float("nan")
+
+    # 1. 'Fecha de apertura: ... Fecha de cierre: ...'
+    m_ap = re.search(r"Fecha de apertura:\s*(\d{1,2}\s+de\s+[a-záéíóú]+\s+de(?:l)?\s+\d{4})", texto, re.I)
+    m_ci = re.search(r"Fecha de cierre:[^:]*?(\d{1,2}\s+de\s+[a-záéíóú]+\s+de(?:l)?\s+\d{4})", texto, re.I)
+    if m_ap and m_ci:
+        return m_ap.group(1), m_ci.group(1)
+
+    # 2. 'desde el DD de Mes hasta el DD de Mes de(l) YYYY'
+    m_rango = re.search(r"(?:desde\s+el\s+)?(\d{1,2})\s+de\s+([a-záéíóú]+)\s+hasta(?:\s+el)?\s+(\d{1,2})\s+de\s+([a-záéíóú]+)\s+de(?:l)?\s+(\d{4})", texto, re.I)
+    if m_rango:
+        d1, m1, d2, m2, y = m_rango.groups()
+        return f"{d1} de {m1} de {y}", f"{d2} de {m2} de {y}"
+
+    # 3. 'Del DD al DD de Mes de(l) YYYY'
+    m_del = re.search(r"(?:del\s+)?(\d{1,2})\s+al\s+(\d{1,2})\s+de\s+([a-záéíóú]+)\s+de(?:l)?\s+(\d{4})", texto, re.I)
+    if m_del:
+        d1, d2, m, y = m_del.groups()
+        return f"{d1} de {m} de {y}", f"{d2} de {m} de {y}"
+
+    # 4. 'DD de Mes al DD de Mes de(l) YYYY'
+    m_al = re.search(r"(\d{1,2})\s+de\s+([a-záéíóú]+)\s+al\s+(\d{1,2})\s+de\s+([a-záéíóú]+)\s+de(?:l)?\s+(\d{4})", texto, re.I)
+    if m_al:
+        d1, m1, d2, m2, y = m_al.groups()
+        return f"{d1} de {m1} de {y}", f"{d2} de {m2} de {y}"
+
+    return float("nan"), float("nan")
+
+
 def descargar_uniandes():
-    """Baja el sitemap.xml y todas las páginas que lista (cada apoyo tiene su ficha)."""
-    print("Uniandes: descargando...")
+    """Descarga los datos de la API de apoyos y programas del segmentador de Uniandes,
+    y luego descarga la ficha HTML de cada apoyo individual respetando robots.txt y pausas."""
+    import json
+    print("Uniandes: descargando catálogo desde la API y fichas de apoyos...")
     descargador = Descargador("uniandes", UNIANDES_BASE)
-    sitemap = descargador.obtener(UNIANDES_BASE + "/sitemap.xml", "sitemap")
-    for url in re.findall(r"<loc>([^<]+)</loc>", sitemap):
-        descargador.obtener(url, "ficha")
+
+    # 1. Descargar catálogo de apoyos desde el backend del segmentador
+    time.sleep(PAUSA_SEGUNDOS)
+    resp_supports = descargador.sesion.get(
+        f"{UNIANDES_API_BASE}/supports",
+        headers=UNIANDES_API_HEADERS,
+        timeout=30
+    )
+    archivo_supports = descargador.carpeta / f"{len(descargador.manifiesto):04d}_api_supports.json"
+    archivo_supports.write_text(resp_supports.text, encoding="utf-8")
+    descargador.manifiesto.append({
+        "tipo_pagina": "api_supports",
+        "url": f"{UNIANDES_API_BASE}/supports",
+        "archivo": archivo_supports.name,
+        "codigo_http": resp_supports.status_code,
+        "fecha_extraccion": descargador.fecha
+    })
+
+    # 2. Descargar catálogo de programas
+    time.sleep(PAUSA_SEGUNDOS)
+    resp_programs = descargador.sesion.get(
+        f"{UNIANDES_API_BASE}/programs",
+        headers=UNIANDES_API_HEADERS,
+        timeout=30
+    )
+    archivo_programs = descargador.carpeta / f"{len(descargador.manifiesto):04d}_api_programs.json"
+    archivo_programs.write_text(resp_programs.text, encoding="utf-8")
+    descargador.manifiesto.append({
+        "tipo_pagina": "api_programs",
+        "url": f"{UNIANDES_API_BASE}/programs",
+        "archivo": archivo_programs.name,
+        "codigo_http": resp_programs.status_code,
+        "fecha_extraccion": descargador.fecha
+    })
+
+    # 3. Descargar la ficha HTML de cada apoyo
+    data_supports = resp_supports.json() if resp_supports.status_code == 200 else {}
+    lista_apoyos = data_supports.get("supports", [])
+    urls_visitadas = set()
+    for apoyo in lista_apoyos:
+        url = apoyo.get("url")
+        if url and url not in urls_visitadas:
+            urls_visitadas.add(url)
+            descargador.obtener(url, "ficha")
+
     descargador.guardar_manifiesto()
 
 
 def leer_uniandes():
-    """Lee las fichas guardadas. Una fila por ficha que publica una sección de cobertura
-    ("Cobertura" o "Cubre"); las demás páginas del sitemap (menús, contacto, comités) se descartan."""
+    """Lee el catálogo de apoyos de Uniandes (guardado en raw) y complementa con las fechas
+    de convocatoria extraídas del HTML de la ficha correspondiente.
+    Devuelve un DataFrame alineado con el esquema común."""
+    import json
     manifiesto = leer_manifiesto("uniandes")
-    fichas = manifiesto[(manifiesto["tipo_pagina"] == "ficha") & (manifiesto["codigo_http"] == 200)]
-    filas, descartadas = [], []
-    for _, ficha in fichas.iterrows():
-        soup = BeautifulSoup(leer_html("uniandes", ficha["archivo"]), "html.parser")
-        # Cada sección es un título (h3 o h4) seguido de un bloque de texto.
-        secciones = {limpiar_texto(t.get_text(" ")).rstrip(":"): t for t in soup.select("main h3, main h4")}
-        titulo_cobertura = secciones.get("Cobertura") or secciones.get("Cubre")
-        if titulo_cobertura is None:
-            descartadas.append(ficha["url"])
-            continue
-        titulo_requisitos = secciones.get("Programas a los que aplica") or secciones.get("Dirigido a")
-        titulo_fechas = next((t for nombre, t in secciones.items() if nombre.startswith("Fechas de convocatoria")), None)
-        texto_fechas = texto_de_seccion(titulo_fechas) if titulo_fechas else ""
-        apertura = re.search(r"Fecha de apertura:\s*(.+?\d{4})", str(texto_fechas))
-        cierre = re.search(r"Fecha de cierre:\s*(.+?\d{4})", str(texto_fechas))
-        nombre = limpiar_texto(soup.find("title").get_text())
+    fila_supports = manifiesto[manifiesto["tipo_pagina"] == "api_supports"]
+    if fila_supports.empty:
+        raise FileNotFoundError("No se encontró el archivo api_supports en data/raw/uniandes/manifiesto.csv")
+
+    archivo_supports = CARPETA_RAW / "uniandes" / fila_supports.iloc[0]["archivo"]
+    with open(archivo_supports, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    fichas_html = dict(zip(
+        manifiesto.loc[manifiesto["tipo_pagina"] == "ficha", "url"],
+        manifiesto.loc[manifiesto["tipo_pagina"] == "ficha", "archivo"]
+    ))
+
+    filas = []
+    fecha_ext = fila_supports.iloc[0]["fecha_extraccion"]
+    for apoyo in data.get("supports", []):
+        url = apoyo.get("url", "")
+        apertura, cierre = float("nan"), float("nan")
+        archivo_html = fichas_html.get(url)
+
+        if archivo_html and Path(CARPETA_RAW / "uniandes" / archivo_html).exists():
+            soup = BeautifulSoup(leer_html("uniandes", archivo_html), "html.parser")
+            secciones = {limpiar_texto(t.get_text(" ")).rstrip(":"): t for t in soup.select("main h3, main h4")}
+            titulo_fechas = next((t for k, t in secciones.items() if k.lower().startswith("fechas de convocatoria")), None)
+            bloque_fechas = titulo_fechas.find_next(class_="uk-panel") if titulo_fechas else None
+            texto_fechas = bloque_fechas.get_text(" ").strip() if bloque_fechas else ""
+            apertura, cierre = extraer_fechas_uniandes(texto_fechas)
+
+        nombre = limpiar_texto(apoyo.get("nombreDelApoyo"))
+        tipo = clasificar_tipo(f"{apoyo.get('tipoDeApoyo', '')} {nombre} {url}")
+        cobertura = limpiar_texto(apoyo.get("cubre"))
+        requisitos = limpiar_texto(apoyo.get("dirigidoA"))
+
         filas.append({
             "nombre": nombre,
             "entidad": "Universidad de los Andes",
-            "tipo": clasificar_tipo(f"{nombre} {ficha['url']}"),  # la URL dice 'beca-' aunque el título no
-            "cobertura": texto_de_seccion(titulo_cobertura),
-            "requisitos": texto_de_seccion(titulo_requisitos) if titulo_requisitos else float("nan"),
-            "fecha_apertura": apertura.group(1) if apertura else float("nan"),
-            "fecha_cierre": cierre.group(1) if cierre else float("nan"),
-            "enlace": ficha["url"],
-            "fuente_url": UNIANDES_BASE + "/sitemap.xml",
-            "fecha_extraccion": ficha["fecha_extraccion"],
-            "requisitos_origen": "html" if titulo_requisitos else float("nan"),
+            "tipo": tipo,
+            "cobertura": cobertura,
+            "requisitos": requisitos,
+            "fecha_apertura": apertura,
+            "fecha_cierre": cierre,
+            "enlace": url,
+            "fuente_url": "https://apoyofinanciero.uniandes.edu.co/explora-apoyos-financieros",
+            "fecha_extraccion": fecha_ext,
+            "requisitos_origen": "api",
         })
-    print(f"Uniandes: {len(filas)} apoyos; {len(descartadas)} páginas sin sección de cobertura descartadas")
-    return pd.DataFrame(filas).reindex(columns=ESQUEMA + COLUMNAS_EXTRA), descartadas
+
+    print(f"Uniandes: {len(filas)} apoyos procesados desde el segmentador y fichas web")
+    return pd.DataFrame(filas).reindex(columns=ESQUEMA + COLUMNAS_EXTRA), []
 
 
 # --------------------------------------------------------------------------------------
@@ -392,7 +501,7 @@ def leer_betowa():
 # Limpieza
 # --------------------------------------------------------------------------------------
 MESES = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6, "julio": 7,
-         "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12}
+         "agosto": 8, "agostro": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12}
 
 # Convocatorias que financian proyectos, empresas o prácticas laborales (no la educación de una persona).
 # Se buscan en el nombre y la descripción; "prácticas laborales" solo en el nombre, porque algunos
@@ -423,7 +532,7 @@ def texto_a_fecha(texto):
     if re.match(r"^\d{4}-\d{2}-\d{2}", texto):
         fecha = pd.Timestamp(texto)
         return fecha.tz_convert("America/Bogota").tz_localize(None) if fecha.tzinfo else fecha
-    partes = re.search(r"(\d{1,2}) de ([a-záéíóú]+) de (\d{4})", texto.lower())
+    partes = re.search(r"(\d{1,2})\s+de\s+([a-záéíóú]+)\s+de(?:l)?\s+(\d{4})", texto.lower())
     if partes and partes.group(2) in MESES:
         return pd.Timestamp(int(partes.group(3)), MESES[partes.group(2)], int(partes.group(1)))
     return pd.NaT

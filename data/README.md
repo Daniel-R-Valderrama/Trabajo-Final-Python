@@ -43,19 +43,16 @@ El resultado es `results/becas_apoyos.csv` (303 filas). Decisiones:
 ## Universidad de los Andes — Apoyo Financiero
 
 - **Sección de apoyos:** https://apoyofinanciero.uniandes.edu.co/explora-apoyos-financieros
-- **Lista de URL que se recorre:** https://apoyofinanciero.uniandes.edu.co/sitemap.xml (30 URL).
-- **robots.txt:** permite las fichas y el sitemap. Bloquea `/apoyos/index.html`, `/api/` y carpetas internas de Joomla.
-- **Formato:** HTML estático, una ficha por apoyo (por ejemplo `/beca-avanza`). Se lee con requests + BeautifulSoup.
-- **Fecha de extracción:** 2026-11-18. Se bajaron el sitemap y 30 páginas; `/comites` respondió 404 y queda fuera.
-- **Qué representa una fila:** un apoyo con ficha propia que publica una sección de cobertura ("Cobertura" o "Cubre"). 18 filas; se descartan 11 páginas sin esa sección: inicio, explora, pregrado, posgrado, doctorado, canales de atención, entidades financieras, financiación externa, educación continua, devoluciones de educación continua y FOPRE.
+- **Origen de datos:** El catálogo completo se obtiene consumiendo el backend del segmentador (`https://segmentador.mundosoft.com.co/api/backend/supports` y `/programs`), que alimenta el buscador interactivo de la universidad.
+- **Fichas individuales:** Cada apoyo tiene una URL oficial a su ficha individual en `apoyofinanciero.uniandes.edu.co`, la cual se descarga respetando `robots.txt` y con pausas de cortesía.
+- **Formato:** JSON estructurado para el catálogo de apoyos y HTML estático (`.html.gz`) para las fichas de detalle.
+- **Qué representa una fila:** un apoyo financiero o beca de la Universidad de los Andes (54 apoyos en total; 52 tras deduplicar enlaces).
 - **Cómo se llena cada campo:**
-  - Hay dos plantillas de ficha. `cobertura` sale de "Cobertura" (plantilla A) o "Cubre" (plantilla B).
-  - `requisitos` sale de la sección de elegibilidad: "Programas a los que aplica" (A) o "Dirigido a" (B).
-  - Las fechas salen de "Fecha de apertura: …" y "Fecha de cierre: …" dentro de "Fechas de convocatoria".
-- **Problemas conocidos:**
-  - El buscador de "Explora" es un iframe (`/apoyos/`) cuyo `index.html` está bloqueado por robots.txt; en su lugar se recorren las fichas del sitemap.
-  - Solo 2 de 18 fichas publican fechas de convocatoria; las demás son apoyos sin ventana de postulación publicada (quedan sin fecha).
-  - En la plantilla A, `requisitos` es la lista de programas a los que aplica, no los criterios detallados. Esos están en el reglamento en PDF, que no se extrae.
+  - `nombre`: nombre oficial del apoyo (`nombreDelApoyo`).
+  - `tipo`: clasificado con la regla del proyecto a partir de `tipoDeApoyo` y nombre ("beca" o "apoyo financiero").
+  - `cobertura`: qué cubre (`cubre`).
+  - `requisitos`: población objetivo y requisitos (`dirigidoA`).
+  - `fecha_apertura` y `fecha_cierre`: se extraen del bloque "Fechas de convocatoria" del HTML de cada ficha individual mediante expresiones regulares en español (34 apoyos publican fechas de convocatoria activas/vigentes). Si no publica fechas o dice "Cerrada" / "En definición", queda como NaN.
 
 ## Agencia Atenea
 
