@@ -4,3 +4,6 @@ __pycache__/
 
 # Material del curso (rúbrica, enunciado, propuesta y capturas): no se publica.
 Enunciados/
+
+# Paquete de entrega (se arma a partir de los archivos del repositorio)
+*.zip
